@@ -31,7 +31,7 @@
 
 ```bash
 # Add zigzag to your project
-zig fetch --save https://github.com/ghostkellz/zigzag/archive/refs/heads/main.zip
+zig fetch --save https://github.com/ghostkellz/zigzag/archive/refs/heads/main.tar.gz
 ```
 
 Then add to your `build.zig.zon`:
