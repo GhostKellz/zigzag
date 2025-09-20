@@ -2,3 +2,6 @@
 /zig-out/
 *.o
 *.exe
+/archive
+archive/
+
