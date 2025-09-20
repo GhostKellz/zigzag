@@ -94,7 +94,7 @@ pub const Timer = struct {
     deadline: i64,
     interval: ?u64, // null for one-shot
     type: TimerType,
-    callback: *const fn(?*anyopaque) void,
+    callback: *const fn (?*anyopaque) void,
     user_data: ?*anyopaque,
 };
 
@@ -379,7 +379,7 @@ pub const EventLoop = struct {
     }
 
     /// Add a timer
-    pub fn addTimer(self: *EventLoop, ms: u64, callback: *const fn(?*anyopaque) void) !Timer {
+    pub fn addTimer(self: *EventLoop, ms: u64, callback: *const fn (?*anyopaque) void) !Timer {
         const timer_id = self.next_timer_id;
         self.next_timer_id += 1;
 
@@ -429,7 +429,7 @@ pub const EventLoop = struct {
     }
 
     /// Add a recurring timer
-    pub fn addRecurringTimer(self: *EventLoop, interval_ms: u64, callback: *const fn(?*anyopaque) void) !Timer {
+    pub fn addRecurringTimer(self: *EventLoop, interval_ms: u64, callback: *const fn (?*anyopaque) void) !Timer {
         const timer_id = self.next_timer_id;
         self.next_timer_id += 1;
 
