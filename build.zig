@@ -16,10 +16,20 @@ pub fn build(b: *std.Build) void {
     // between Debug, ReleaseSafe, ReleaseFast, and ReleaseSmall. Here we do not
     // set a preferred release mode, allowing the user to decide how to optimize.
     const optimize = b.standardOptimizeOption(.{});
-    // It's also possible to define more custom flags to toggle optional features
-    // of this build script using `b.option()`. All defined flags (including
-    // target and optimize options) will be listed when running `zig build --help`
-    // in this directory.
+    // Optional build features for zigzag
+    const enable_io_uring = b.option(bool, "io_uring", "Enable io_uring backend (Linux only)") orelse true;
+    const enable_epoll = b.option(bool, "epoll", "Enable epoll backend (Linux)") orelse true;
+    const enable_kqueue = b.option(bool, "kqueue", "Enable kqueue backend (macOS/BSD)") orelse true;
+    const enable_iocp = b.option(bool, "iocp", "Enable IOCP backend (Windows)") orelse true;
+    const enable_terminal = b.option(bool, "terminal", "Enable terminal features (PTY, signals)") orelse true;
+    const enable_zsync = b.option(bool, "zsync", "Enable zsync async runtime integration") orelse true;
+    const enable_debug = b.option(bool, "debug_events", "Enable event debugging") orelse false;
+
+    // Get zsync dependency if enabled
+    const zsync_dep = if (enable_zsync) b.dependency("zsync", .{
+        .target = target,
+        .optimize = optimize,
+    }) else null;
 
     // This creates a module, which represents a collection of source files alongside
     // some compilation options, such as optimization mode and linked system libraries.
@@ -40,6 +50,23 @@ pub fn build(b: *std.Build) void {
         // which requires us to specify a target.
         .target = target,
     });
+
+    // Add zsync module if enabled
+    if (zsync_dep) |dep| {
+        mod.addImport("zsync", dep.module("zsync"));
+    }
+
+    // Add build options as module options
+    const build_options = b.addOptions();
+    build_options.addOption(bool, "enable_io_uring", enable_io_uring);
+    build_options.addOption(bool, "enable_epoll", enable_epoll);
+    build_options.addOption(bool, "enable_kqueue", enable_kqueue);
+    build_options.addOption(bool, "enable_iocp", enable_iocp);
+    build_options.addOption(bool, "enable_terminal", enable_terminal);
+    build_options.addOption(bool, "enable_zsync", enable_zsync);
+    build_options.addOption(bool, "enable_debug", enable_debug);
+
+    mod.addImport("build_options", build_options.createModule());
 
     // Here we define an executable. An executable needs to have a root module
     // which needs to expose a `main` function. While we could add a main function
@@ -73,12 +100,8 @@ pub fn build(b: *std.Build) void {
             // List of modules available for import in source files part of the
             // root module.
             .imports = &.{
-                // Here "zigzag" is the name you will use in your source code to
-                // import this module (e.g. `@import("zigzag")`). The name is
-                // repeated because you are allowed to rename your imports, which
-                // can be extremely useful in case of collisions (which can happen
-                // importing modules from different packages).
                 .{ .name = "zigzag", .module = mod },
+                .{ .name = "build_options", .module = build_options.createModule() },
             },
         }),
     });

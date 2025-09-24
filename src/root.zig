@@ -3,10 +3,15 @@
 
 const std = @import("std");
 const builtin = @import("builtin");
+const build_options = @import("build_options");
 
-// Backend imports
-const EpollBackend = @import("backend/epoll.zig").EpollBackend;
-const IoUringBackend = @import("backend/io_uring.zig").IoUringBackend;
+// Backend imports - conditionally compiled based on build options
+const EpollBackend = if (build_options.enable_epoll) @import("backend/epoll.zig").EpollBackend else void;
+const IoUringBackend = if (build_options.enable_io_uring) @import("backend/io_uring.zig").IoUringBackend else void;
+const KqueueBackend = if (build_options.enable_kqueue) @import("backend/kqueue.zig").KqueueBackend else void;
+
+// zsync integration - conditionally compiled
+const zsync = if (build_options.enable_zsync) @import("zsync") else void;
 
 /// Platform backends for event loop
 pub const Backend = enum {
@@ -18,17 +23,44 @@ pub const Backend = enum {
     /// Auto-detect the best available backend
     pub fn autoDetect() Backend {
         return switch (builtin.os.tag) {
-            .linux => {
-                // Try to initialize io_uring to check if it's available
-                var test_ring = std.os.linux.IoUring.init(4, 0) catch {
-                    return .epoll; // Fall back to epoll if io_uring fails
-                };
-                test_ring.deinit();
-                return .io_uring; // io_uring is available
+            .linux => blk: {
+                // Check if io_uring is enabled and available
+                if (build_options.enable_io_uring) {
+                    var test_ring = std.os.linux.IoUring.init(4, 0) catch {
+                        if (build_options.enable_epoll) {
+                            break :blk .epoll; // Fall back to epoll if io_uring fails
+                        }
+                        @compileError("No Linux backends enabled");
+                    };
+                    test_ring.deinit();
+                    break :blk .io_uring; // io_uring is available
+                } else if (build_options.enable_epoll) {
+                    break :blk .epoll;
+                } else {
+                    @compileError("No Linux backends enabled");
+                }
             },
-            .macos, .ios, .freebsd, .openbsd, .netbsd => .kqueue,
-            .windows => .iocp,
-            else => .epoll, // Safe fallback
+            .macos, .ios, .freebsd, .openbsd, .netbsd => blk: {
+                if (build_options.enable_kqueue) {
+                    break :blk .kqueue;
+                } else {
+                    @compileError("kqueue backend not enabled for BSD/macOS");
+                }
+            },
+            .windows => blk: {
+                if (build_options.enable_iocp) {
+                    break :blk .iocp;
+                } else {
+                    @compileError("IOCP backend not enabled for Windows");
+                }
+            },
+            else => blk: {
+                if (build_options.enable_epoll) {
+                    break :blk .epoll; // Safe fallback
+                } else {
+                    @compileError("No compatible backends enabled for this platform");
+                }
+            },
         };
     }
 };
@@ -118,9 +150,10 @@ pub const EventLoop = struct {
     options: Options,
     allocator: std.mem.Allocator,
 
-    // Backend-specific data
-    epoll_backend: ?EpollBackend = null,
-    io_uring_backend: ?IoUringBackend = null,
+    // Backend-specific data - conditionally compiled
+    epoll_backend: if (build_options.enable_epoll) ?EpollBackend else void = if (build_options.enable_epoll) null else {},
+    io_uring_backend: if (build_options.enable_io_uring) ?IoUringBackend else void = if (build_options.enable_io_uring) null else {},
+    kqueue_backend: if (build_options.enable_kqueue) ?KqueueBackend else void = if (build_options.enable_kqueue) null else {},
 
     // Watch management
     watches: std.AutoHashMap(i32, Watch),
@@ -145,8 +178,9 @@ pub const EventLoop = struct {
             .backend = backend,
             .options = options,
             .allocator = allocator,
-            .epoll_backend = null,
-            .io_uring_backend = null,
+            .epoll_backend = if (build_options.enable_epoll) null else {},
+            .io_uring_backend = if (build_options.enable_io_uring) null else {},
+            .kqueue_backend = if (build_options.enable_kqueue) null else {},
             .watches = watches,
             .next_watch_id = 0,
             .timers = timers,
@@ -156,18 +190,33 @@ pub const EventLoop = struct {
         // Initialize the appropriate backend
         switch (backend) {
             .epoll => {
-                loop.epoll_backend = try EpollBackend.init(allocator);
+                if (build_options.enable_epoll) {
+                    loop.epoll_backend = try EpollBackend.init(allocator);
+                } else {
+                    @panic("epoll backend disabled at compile time");
+                }
             },
             .io_uring => {
-                loop.io_uring_backend = try IoUringBackend.init(allocator, @intCast(options.max_events));
+                if (build_options.enable_io_uring) {
+                    loop.io_uring_backend = try IoUringBackend.init(allocator, @intCast(options.max_events));
+                } else {
+                    @panic("io_uring backend disabled at compile time");
+                }
             },
             .kqueue => {
-                // TODO: Initialize kqueue backend
-                return error.BackendNotImplemented;
+                if (build_options.enable_kqueue) {
+                    loop.kqueue_backend = try KqueueBackend.init(allocator);
+                } else {
+                    @panic("kqueue backend disabled at compile time");
+                }
             },
             .iocp => {
-                // TODO: Initialize IOCP backend
-                return error.BackendNotImplemented;
+                if (build_options.enable_iocp) {
+                    // TODO: Initialize IOCP backend
+                    return error.BackendNotImplemented;
+                } else {
+                    @panic("IOCP backend disabled at compile time");
+                }
             },
         }
 
@@ -177,11 +226,20 @@ pub const EventLoop = struct {
     /// Deinitialize the event loop
     pub fn deinit(self: *EventLoop) void {
         // Cleanup backend-specific resources
-        if (self.epoll_backend) |*backend| {
-            backend.deinit();
+        if (build_options.enable_epoll) {
+            if (self.epoll_backend) |*backend| {
+                backend.deinit();
+            }
         }
-        if (self.io_uring_backend) |*backend| {
-            backend.deinit();
+        if (build_options.enable_io_uring) {
+            if (self.io_uring_backend) |*backend| {
+                backend.deinit();
+            }
+        }
+        if (build_options.enable_kqueue) {
+            if (self.kqueue_backend) |*backend| {
+                backend.deinit();
+            }
         }
 
         // Cleanup watches
@@ -195,24 +253,42 @@ pub const EventLoop = struct {
     pub fn poll(self: *EventLoop, events: []Event, timeout_ms: ?u32) !usize {
         return switch (self.backend) {
             .epoll => {
-                if (self.epoll_backend) |*backend| {
-                    return backend.poll(events, timeout_ms);
+                if (build_options.enable_epoll) {
+                    if (self.epoll_backend) |*backend| {
+                        return backend.poll(events, timeout_ms);
+                    }
+                    return error.BackendNotInitialized;
+                } else {
+                    @panic("epoll backend disabled at compile time");
                 }
-                return error.BackendNotInitialized;
             },
             .io_uring => {
-                if (self.io_uring_backend) |*backend| {
-                    return backend.poll(events, timeout_ms);
+                if (build_options.enable_io_uring) {
+                    if (self.io_uring_backend) |*backend| {
+                        return backend.poll(events, timeout_ms);
+                    }
+                    return error.BackendNotInitialized;
+                } else {
+                    @panic("io_uring backend disabled at compile time");
                 }
-                return error.BackendNotInitialized;
             },
             .kqueue => {
-                // TODO: Implement kqueue polling
-                return error.BackendNotImplemented;
+                if (build_options.enable_kqueue) {
+                    if (self.kqueue_backend) |*backend| {
+                        return backend.poll(events, timeout_ms);
+                    }
+                    return error.BackendNotInitialized;
+                } else {
+                    @panic("kqueue backend disabled at compile time");
+                }
             },
             .iocp => {
-                // TODO: Implement IOCP polling
-                return error.BackendNotImplemented;
+                if (build_options.enable_iocp) {
+                    // TODO: Implement IOCP polling
+                    return error.BackendNotImplemented;
+                } else {
+                    @panic("IOCP backend disabled at compile time");
+                }
             },
         };
     }
@@ -280,26 +356,45 @@ pub const EventLoop = struct {
         // Add to backend
         switch (self.backend) {
             .epoll => {
-                if (self.epoll_backend) |*backend| {
-                    try backend.addFd(fd, events);
+                if (build_options.enable_epoll) {
+                    if (self.epoll_backend) |*backend| {
+                        try backend.addFd(fd, events);
+                    } else {
+                        return error.BackendNotInitialized;
+                    }
                 } else {
-                    return error.BackendNotInitialized;
+                    @panic("epoll backend disabled at compile time");
                 }
             },
             .io_uring => {
-                if (self.io_uring_backend) |*backend| {
-                    try backend.addFd(fd, events);
+                if (build_options.enable_io_uring) {
+                    if (self.io_uring_backend) |*backend| {
+                        try backend.addFd(fd, events);
+                    } else {
+                        return error.BackendNotInitialized;
+                    }
                 } else {
-                    return error.BackendNotInitialized;
+                    @panic("io_uring backend disabled at compile time");
                 }
             },
             .kqueue => {
-                // TODO: Implement kqueue fd watching
-                return error.BackendNotImplemented;
+                if (build_options.enable_kqueue) {
+                    if (self.kqueue_backend) |*backend| {
+                        try backend.addFd(fd, events);
+                    } else {
+                        return error.BackendNotInitialized;
+                    }
+                } else {
+                    @panic("kqueue backend disabled at compile time");
+                }
             },
             .iocp => {
-                // TODO: Implement IOCP fd watching
-                return error.BackendNotImplemented;
+                if (build_options.enable_iocp) {
+                    // TODO: Implement IOCP fd watching
+                    return error.BackendNotImplemented;
+                } else {
+                    @panic("IOCP backend disabled at compile time");
+                }
             },
         }
 

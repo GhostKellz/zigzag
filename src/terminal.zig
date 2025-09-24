@@ -15,9 +15,29 @@ pub const Pty = struct {
 
     /// Create a new PTY pair
     pub fn create() !Pty {
-        // TODO: Implement proper PTY creation with grantpt/unlockpt/ptsname
-        // For now, return a placeholder that will be implemented later
-        return error.NotImplemented;
+        // Open /dev/ptmx for master
+        const master_fd = try posix.open("/dev/ptmx", .{ .ACCMODE = .RDWR, .NOCTTY = true, .CLOEXEC = true }, 0);
+        errdefer posix.close(master_fd);
+
+        // Grant access to the slave pseudoterminal
+        try posix.grantpt(master_fd);
+
+        // Unlock the slave pseudoterminal
+        try posix.unlockpt(master_fd);
+
+        // Get the name of the slave pseudoterminal
+        const slave_path = try posix.ptsname_r(master_fd);
+        errdefer std.heap.page_allocator.free(slave_path);
+
+        // Open the slave pseudoterminal
+        const slave_fd = try posix.open(slave_path, .{ .ACCMODE = .RDWR, .NOCTTY = true, .CLOEXEC = true }, 0);
+        errdefer posix.close(slave_fd);
+
+        return Pty{
+            .master_fd = master_fd,
+            .slave_fd = slave_fd,
+            .slave_path = slave_path,
+        };
     }
 
     /// Close the PTY
@@ -29,16 +49,27 @@ pub const Pty = struct {
 
     /// Set terminal size
     pub fn setSize(self: *Pty, rows: u16, cols: u16) !void {
-        _ = self;
-        _ = rows;
-        _ = cols;
-        return error.NotImplemented;
+        var winsize = posix.system.winsize{
+            .ws_row = rows,
+            .ws_col = cols,
+            .ws_xpixel = 0,
+            .ws_ypixel = 0,
+        };
+
+        const rc = std.c.ioctl(self.master_fd, posix.TIOCSWINSZ, &winsize);
+        if (rc != 0) {
+            return posix.unexpectedErrno(@enumFromInt(std.c._errno().*));
+        }
     }
 
     /// Get terminal size
     pub fn getSize(self: *Pty) !posix.system.winsize {
-        _ = self;
-        return error.NotImplemented;
+        var winsize: posix.system.winsize = undefined;
+        const rc = std.c.ioctl(self.master_fd, posix.TIOCGWINSZ, &winsize);
+        if (rc != 0) {
+            return posix.unexpectedErrno(@enumFromInt(std.c._errno().*));
+        }
+        return winsize;
     }
 };
 
@@ -75,7 +106,12 @@ pub const SignalHandler = struct {
 
     /// Register signal handler with event loop
     pub fn register(self: *SignalHandler) !void {
-        try self.event_loop.addFd(self.signal_fd, .{ .read = true }, signalCallback, self);
+        const watch = try self.event_loop.addFd(self.signal_fd, .{ .read = true });
+        self.event_loop.setCallback(watch, signalCallback);
+        // Store self as user data - we'll need to update the watch structure for this
+        if (self.event_loop.watches.getPtr(self.signal_fd)) |stored_watch| {
+            stored_watch.user_data = @ptrCast(self);
+        }
     }
 
     /// Signal callback function
@@ -168,9 +204,23 @@ pub const EventCoalescer = struct {
 };
 
 test "PTY creation and basic operations" {
-    // PTY implementation is not yet complete
-    const pty = Pty.create();
-    try std.testing.expectError(error.NotImplemented, pty);
+    // PTY creation should work on Unix systems
+    var pty = Pty.create() catch |err| switch (err) {
+        error.AccessDenied, error.DeviceNotFound => return error.SkipZigTest,
+        else => return err,
+    };
+    defer pty.close();
+
+    // Test that FDs are valid
+    try std.testing.expect(pty.master_fd > 0);
+    try std.testing.expect(pty.slave_fd > 0);
+    try std.testing.expect(pty.slave_path.len > 0);
+
+    // Test size operations
+    try pty.setSize(24, 80);
+    const size = try pty.getSize();
+    try std.testing.expectEqual(@as(u16, 24), size.ws_row);
+    try std.testing.expectEqual(@as(u16, 80), size.ws_col);
 }
 
 test "Event coalescer" {

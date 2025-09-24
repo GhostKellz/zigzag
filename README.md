@@ -15,6 +15,9 @@
 
 **Lightning-fast, cross-platform event loop for Zig - optimized for terminal emulators with seamless async runtime integration.**
 
+> ⚠️ **EXPERIMENTAL LIBRARY - FOR LAB/PERSONAL USE**
+> This is an experimental library under active development. It is intended for research, learning, and personal projects. The API is subject to change and should not be used in production environments without thorough testing and understanding of its limitations.
+
 ## ✨ Features
 
 - 🚀 **Maximum Performance**: io_uring backend with zero-copy I/O operations

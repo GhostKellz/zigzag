@@ -123,19 +123,17 @@ pub const IoUringBackend = struct {
 
     /// Add a recurring timer
     pub fn addRecurringTimer(self: *IoUringBackend, timer_id: u32, interval_ms: u64) !void {
-        const interval_ns = interval_ms * std.time.ns_per_ms;
-
         // Prepare timeout SQE for recurring timer
         var sqe = self.ring.get_sqe() catch return error.SubmissionQueueFull;
 
-        // Set up recurring timeout
-        sqe.prep_timeout(.{
-            .addr = interval_ns,
-            .len = 0,
-            .flags = std.os.linux.IORING_TIMEOUT_MULTISHOT, // recurring
-            .count = 0,
-        }, 0, 0);
+        // Set up timeout operation with interval
+        var ts: std.os.linux.kernel_timespec = .{
+            .sec = @intCast(@divTrunc(interval_ms, 1000)),
+            .nsec = @intCast((@mod(interval_ms, 1000)) * 1_000_000),
+        };
 
+        // Use multishot flag for recurring behavior if available
+        sqe.prep_timeout(&ts, 0, std.os.linux.IORING_TIMEOUT_MULTISHOT);
         sqe.user_data = timer_id;
 
         _ = try self.ring.submit();
@@ -151,38 +149,42 @@ pub const IoUringBackend = struct {
 
     /// Poll for events
     pub fn poll(self: *IoUringBackend, events: []Event, timeout_ms: ?u32) !usize {
-        // Submit any pending SQEs and wait for completions
-        const wait_nr = if (timeout_ms) |ms| @as(u32, @intCast(ms)) else 0;
-        const completed = try self.ring.submit_and_wait(wait_nr);
+        // For now, implement a simple timeout if specified
+        if (timeout_ms) |ms| {
+            if (ms > 0) {
+                std.time.sleep(ms * std.time.ns_per_ms);
+            }
+        }
+
+        // Submit any pending SQEs - for now we don't have any prepared
+        _ = self.ring.submit() catch 0;
 
         var event_count: usize = 0;
 
-        // Process completions
-        var i: usize = 0;
-        while (i < completed) : (i += 1) {
-            const cqe = self.ring.cqes[i];
+        // Check for completions without waiting
+        while (self.ring.cq_ready() > 0 and event_count < events.len) {
+            const cqe = try self.ring.copy_cqe();
 
-            // Check if this is a timer completion
+            // Process based on result and user_data
             if (cqe.user_data > 0) {
-                // Timer event
+                // Timer event (user_data contains timer_id)
                 events[event_count] = Event{
                     .fd = -1, // timers don't have FDs
                     .type = .timer_expired,
                     .data = .{ .timer_id = @as(u32, @intCast(cqe.user_data)) },
                 };
-            } else {
-                // I/O event - for now, we need to map back to the original FD
-                // This is a simplified implementation
-                // In a full implementation, we'd need to track SQE->FD mappings
+                event_count += 1;
+            } else if (cqe.res >= 0) {
+                // Successful I/O completion
+                // For now, we'll use a simplified approach
+                // In a real implementation, we'd track which FD this completion relates to
                 events[event_count] = Event{
-                    .fd = 0, // placeholder
-                    .type = .read_ready, // placeholder
-                    .data = .{ .size = 0 },
+                    .fd = 0, // placeholder - would need proper FD mapping
+                    .type = .read_ready,
+                    .data = .{ .size = @intCast(cqe.res) },
                 };
+                event_count += 1;
             }
-
-            event_count += 1;
-            if (event_count >= events.len) break;
         }
 
         return event_count;
