@@ -2,9 +2,16 @@ const std = @import("std");
 const zigzag = @import("zigzag");
 
 pub fn main() !void {
-    // Prints to stderr, ignoring potential errors.
-    std.debug.print("All your {s} are belong to us.\n", .{"codebase"});
-    try zigzag.bufferedPrint();
+    // Initialize allocator
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+
+    // Create event loop with auto-detected backend
+    var loop = try zigzag.EventLoop.init(allocator, .{});
+    defer loop.deinit();
+
+    std.debug.print("ZigZag event loop initialized with backend: {}\n", .{loop.backend});
 }
 
 test "simple test" {

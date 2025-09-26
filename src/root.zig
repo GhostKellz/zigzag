@@ -10,6 +10,10 @@ const EpollBackend = if (build_options.enable_epoll) @import("backend/epoll.zig"
 const IoUringBackend = if (build_options.enable_io_uring) @import("backend/io_uring.zig").IoUringBackend else void;
 const KqueueBackend = if (build_options.enable_kqueue) @import("backend/kqueue.zig").KqueueBackend else void;
 
+// Event coalescing system
+const EventCoalescer = @import("event_coalescing.zig").EventCoalescer;
+const CoalescingConfig = @import("event_coalescing.zig").CoalescingConfig;
+
 // zsync integration - conditionally compiled
 const zsync = if (build_options.enable_zsync) @import("zsync") else void;
 
@@ -142,6 +146,7 @@ pub const Watch = struct {
 pub const Options = struct {
     max_events: u32 = 1024,
     backend: ?Backend = null,
+    coalescing: ?CoalescingConfig = null,
 };
 
 /// Main EventLoop structure
@@ -163,6 +168,12 @@ pub const EventLoop = struct {
     timers: std.AutoHashMap(u32, Timer),
     next_timer_id: u32 = 1,
 
+    // Stop mechanism
+    should_stop: bool = false,
+
+    // Event coalescing
+    coalescer: ?EventCoalescer = null,
+
     /// Initialize a new event loop
     pub fn init(allocator: std.mem.Allocator, options: Options) !EventLoop {
         // Auto-detect backend if not specified
@@ -173,6 +184,13 @@ pub const EventLoop = struct {
 
         var timers = std.AutoHashMap(u32, Timer).init(allocator);
         errdefer timers.deinit();
+
+        // Initialize coalescer if configured
+        var coalescer: ?EventCoalescer = null;
+        if (options.coalescing) |config| {
+            coalescer = try EventCoalescer.init(allocator, config);
+        }
+        errdefer if (coalescer) |*c| c.deinit();
 
         var loop = EventLoop{
             .backend = backend,
@@ -185,6 +203,8 @@ pub const EventLoop = struct {
             .next_watch_id = 0,
             .timers = timers,
             .next_timer_id = 1,
+            .should_stop = false,
+            .coalescer = coalescer,
         };
 
         // Initialize the appropriate backend
@@ -205,7 +225,11 @@ pub const EventLoop = struct {
             },
             .kqueue => {
                 if (build_options.enable_kqueue) {
-                    loop.kqueue_backend = try KqueueBackend.init(allocator);
+                    if (KqueueBackend != void) {
+                        loop.kqueue_backend = try KqueueBackend.init(allocator);
+                    } else {
+                        @panic("kqueue backend not supported on this platform");
+                    }
                 } else {
                     @panic("kqueue backend disabled at compile time");
                 }
@@ -236,10 +260,15 @@ pub const EventLoop = struct {
                 backend.deinit();
             }
         }
-        if (build_options.enable_kqueue) {
+        if (build_options.enable_kqueue and KqueueBackend != void) {
             if (self.kqueue_backend) |*backend| {
                 backend.deinit();
             }
+        }
+
+        // Cleanup coalescer
+        if (self.coalescer) |*coalescer| {
+            coalescer.deinit();
         }
 
         // Cleanup watches
@@ -273,7 +302,7 @@ pub const EventLoop = struct {
                 }
             },
             .kqueue => {
-                if (build_options.enable_kqueue) {
+                if (build_options.enable_kqueue and KqueueBackend != void) {
                     if (self.kqueue_backend) |*backend| {
                         return backend.poll(events, timeout_ms);
                     }
@@ -298,8 +327,19 @@ pub const EventLoop = struct {
         var events: [1024]Event = undefined;
         const count = try self.poll(&events, 0);
         if (count > 0) {
+            var processed_events = events[0..count];
+            var coalesced_events: [1024]Event = undefined;
+
+            // Apply event coalescing if enabled
+            if (self.coalescer) |*coalescer| {
+                const coalesced_count = try coalescer.processEvents(processed_events, &coalesced_events);
+                if (coalesced_count > 0) {
+                    processed_events = coalesced_events[0..coalesced_count];
+                }
+            }
+
             // Process events
-            for (events[0..count]) |event| {
+            for (processed_events) |event| {
                 switch (event.type) {
                     .timer_expired => {
                         // Handle timer event
@@ -335,15 +375,23 @@ pub const EventLoop = struct {
 
     /// Run the event loop until stopped
     pub fn run(self: *EventLoop) !void {
-        while (try self.tick()) {
-            // Continue processing
+        while (!self.should_stop) {
+            if (!try self.tick()) {
+                // No events, but we can continue if not stopped
+                // Add a small delay to prevent busy-waiting
+                std.time.sleep(1_000_000); // 1ms
+            }
         }
     }
 
     /// Stop the event loop
     pub fn stop(self: *EventLoop) void {
-        _ = self;
-        // TODO: Implement stop mechanism
+        self.should_stop = true;
+    }
+
+    /// Reset the stop flag to allow the event loop to run again
+    pub fn reset(self: *EventLoop) void {
+        self.should_stop = false;
     }
 
     /// Add file descriptor to watch
@@ -378,7 +426,7 @@ pub const EventLoop = struct {
                 }
             },
             .kqueue => {
-                if (build_options.enable_kqueue) {
+                if (build_options.enable_kqueue and KqueueBackend != void) {
                     if (self.kqueue_backend) |*backend| {
                         try backend.addFd(fd, events);
                     } else {
@@ -432,8 +480,15 @@ pub const EventLoop = struct {
                 }
             },
             .kqueue => {
-                // TODO: Implement kqueue fd modification
-                return error.BackendNotImplemented;
+                if (build_options.enable_kqueue and KqueueBackend != void) {
+                    if (self.kqueue_backend) |*backend| {
+                        try backend.modifyFd(watch.fd, events);
+                    } else {
+                        return error.BackendNotInitialized;
+                    }
+                } else {
+                    @panic("kqueue backend disabled at compile time");
+                }
             },
             .iocp => {
                 // TODO: Implement IOCP fd modification
@@ -462,7 +517,13 @@ pub const EventLoop = struct {
                 }
             },
             .kqueue => {
-                // TODO: Implement kqueue fd removal
+                if (build_options.enable_kqueue and KqueueBackend != void) {
+                    if (self.kqueue_backend) |*backend| {
+                        backend.removeFd(watch.fd) catch {};
+                    }
+                } else {
+                    @panic("kqueue backend disabled at compile time");
+                }
             },
             .iocp => {
                 // TODO: Implement IOCP fd removal
@@ -507,8 +568,15 @@ pub const EventLoop = struct {
                 }
             },
             .kqueue => {
-                // TODO: Implement kqueue timer
-                return error.BackendNotImplemented;
+                if (build_options.enable_kqueue and KqueueBackend != void) {
+                    if (self.kqueue_backend) |*backend| {
+                        try backend.addTimer(timer_id, ms);
+                    } else {
+                        return error.BackendNotInitialized;
+                    }
+                } else {
+                    @panic("kqueue backend disabled at compile time");
+                }
             },
             .iocp => {
                 // TODO: Implement IOCP timer
@@ -557,8 +625,15 @@ pub const EventLoop = struct {
                 }
             },
             .kqueue => {
-                // TODO: Implement kqueue recurring timer
-                return error.BackendNotImplemented;
+                if (build_options.enable_kqueue and KqueueBackend != void) {
+                    if (self.kqueue_backend) |*backend| {
+                        try backend.addRecurringTimer(timer_id, interval_ms);
+                    } else {
+                        return error.BackendNotInitialized;
+                    }
+                } else {
+                    @panic("kqueue backend disabled at compile time");
+                }
             },
             .iocp => {
                 // TODO: Implement IOCP recurring timer
@@ -588,7 +663,13 @@ pub const EventLoop = struct {
                 }
             },
             .kqueue => {
-                // TODO: Implement kqueue timer cancellation
+                if (build_options.enable_kqueue and KqueueBackend != void) {
+                    if (self.kqueue_backend) |*backend| {
+                        backend.cancelTimer(timer.id) catch {};
+                    }
+                } else {
+                    @panic("kqueue backend disabled at compile time");
+                }
             },
             .iocp => {
                 // TODO: Implement IOCP timer cancellation

@@ -18,6 +18,10 @@ pub const IoUringBackend = struct {
     // File descriptor management
     watches: std.AutoHashMap(i32, Watch),
 
+    // User data mapping (maps io_uring user_data to file descriptors)
+    user_data_to_fd: std.AutoHashMap(u64, i32),
+    next_user_data: u64 = 1000, // Start at 1000 to avoid conflicts with timer IDs
+
     // Timer management
     timers: std.AutoHashMap(u32, Timer),
     next_timer_id: u32 = 1,
@@ -30,6 +34,9 @@ pub const IoUringBackend = struct {
         var watches = std.AutoHashMap(i32, Watch).init(allocator);
         errdefer watches.deinit();
 
+        var user_data_to_fd = std.AutoHashMap(u64, i32).init(allocator);
+        errdefer user_data_to_fd.deinit();
+
         var timers = std.AutoHashMap(u32, Timer).init(allocator);
         errdefer timers.deinit();
 
@@ -37,6 +44,8 @@ pub const IoUringBackend = struct {
             .ring = ring,
             .allocator = allocator,
             .watches = watches,
+            .user_data_to_fd = user_data_to_fd,
+            .next_user_data = 1000,
             .timers = timers,
             .next_timer_id = 1,
         };
@@ -50,15 +59,18 @@ pub const IoUringBackend = struct {
         // Note: No need to submit_and_wait since we haven't submitted any operations
 
         self.timers.deinit();
+        self.user_data_to_fd.deinit();
         self.watches.deinit();
         self.ring.deinit();
     }
 
-    /// Convert EventMask to io_uring events
+    /// Convert EventMask to io_uring poll events
     fn eventMaskToIoUring(mask: EventMask) u32 {
         var events: u32 = 0;
-        if (mask.read) events |= std.os.linux.IORING_OP.READ;
-        if (mask.write) events |= std.os.linux.IORING_OP.WRITE;
+        if (mask.read) events |= std.os.linux.POLL.IN;
+        if (mask.write) events |= std.os.linux.POLL.OUT;
+        if (mask.io_error) events |= std.os.linux.POLL.ERR;
+        if (mask.hangup) events |= std.os.linux.POLL.HUP;
         return events;
     }
 
@@ -68,10 +80,6 @@ pub const IoUringBackend = struct {
         if (self.watches.contains(fd)) {
             return error.FdAlreadyWatched;
         }
-
-        // For io_uring, we don't pre-register FDs like with epoll
-        // Instead, we prepare SQEs (Submission Queue Entries) as needed
-        // The actual I/O operations will be submitted when events occur
 
         // Create watch
         const watch = Watch{
@@ -83,12 +91,31 @@ pub const IoUringBackend = struct {
 
         // Store watch
         try self.watches.put(fd, watch);
+
+        // Set up a poll operation for this FD
+        var sqe = try self.ring.get_sqe();
+        const user_data = self.next_user_data;
+        self.next_user_data += 1;
+
+        // Map user_data to fd for later lookup
+        try self.user_data_to_fd.put(user_data, fd);
+
+        // Setup poll operation
+        const poll_events = eventMaskToIoUring(mask);
+        sqe.prep_poll_add(fd, poll_events);
+        sqe.user_data = user_data;
+
+        // Submit the operation
+        _ = try self.ring.submit();
     }
 
     /// Modify file descriptor in io_uring
     pub fn modifyFd(self: *IoUringBackend, fd: i32, mask: EventMask) !void {
-        if (self.watches.getPtr(fd)) |watch| {
-            watch.events = mask;
+        if (self.watches.getPtr(fd)) |_| {
+            // For io_uring, we need to cancel the existing poll and create a new one
+            // This is simplified - in production, we'd track the user_data better
+            self.removeFd(fd);
+            try self.addFd(fd, mask);
         } else {
             return error.FdNotWatched;
         }
@@ -96,7 +123,26 @@ pub const IoUringBackend = struct {
 
     /// Remove file descriptor from io_uring
     pub fn removeFd(self: *IoUringBackend, fd: i32) void {
+        // Remove the watch
         _ = self.watches.remove(fd);
+
+        // Remove from user_data mapping (find by fd value)
+        var iterator = self.user_data_to_fd.iterator();
+        var to_remove: ?u64 = null;
+        while (iterator.next()) |entry| {
+            if (entry.value_ptr.* == fd) {
+                to_remove = entry.key_ptr.*;
+                break;
+            }
+        }
+        if (to_remove) |user_data| {
+            _ = self.user_data_to_fd.remove(user_data);
+
+            // Cancel the poll operation
+            var sqe = self.ring.get_sqe() catch return;
+            sqe.prep_cancel(user_data, 0);
+            _ = self.ring.submit() catch {};
+        }
     }
 
     /// Add a timer using io_uring timeout
@@ -149,41 +195,58 @@ pub const IoUringBackend = struct {
 
     /// Poll for events
     pub fn poll(self: *IoUringBackend, events: []Event, timeout_ms: ?u32) !usize {
-        // For now, implement a simple timeout if specified
-        if (timeout_ms) |ms| {
-            if (ms > 0) {
-                std.time.sleep(ms * std.time.ns_per_ms);
-            }
-        }
-
-        // Submit any pending SQEs - for now we don't have any prepared
+        // Submit any pending SQEs first
         _ = self.ring.submit() catch 0;
+
+        // Wait for events with timeout
+        const wait_nr: u32 = if (timeout_ms) |ms| blk: {
+            if (ms == 0) break :blk 0; // Non-blocking
+            const ts = std.os.linux.kernel_timespec{
+                .sec = @intCast(ms / 1000),
+                .nsec = @intCast((ms % 1000) * 1_000_000),
+            };
+            _ = self.ring.submit_and_wait_timeout(1, &ts) catch 0;
+            break :blk 1;
+        } else 0;
+
+        if (wait_nr == 0) {
+            // Just check without waiting
+            _ = self.ring.submit() catch 0;
+        }
 
         var event_count: usize = 0;
 
-        // Check for completions without waiting
+        // Process completions
         while (self.ring.cq_ready() > 0 and event_count < events.len) {
             const cqe = try self.ring.copy_cqe();
 
-            // Process based on result and user_data
-            if (cqe.user_data > 0) {
-                // Timer event (user_data contains timer_id)
+            // Determine if this is a timer or FD event
+            if (cqe.user_data < 1000) {
+                // Timer event (user_data < 1000 are timer IDs)
                 events[event_count] = Event{
-                    .fd = -1, // timers don't have FDs
+                    .fd = -1,
                     .type = .timer_expired,
                     .data = .{ .timer_id = @as(u32, @intCast(cqe.user_data)) },
                 };
                 event_count += 1;
-            } else if (cqe.res >= 0) {
-                // Successful I/O completion
-                // For now, we'll use a simplified approach
-                // In a real implementation, we'd track which FD this completion relates to
+            } else if (self.user_data_to_fd.get(cqe.user_data)) |fd| {
+                // FD event - map back to file descriptor
+                const event_type = if (cqe.res >= 0) .read_ready else .io_error;
                 events[event_count] = Event{
-                    .fd = 0, // placeholder - would need proper FD mapping
-                    .type = .read_ready,
-                    .data = .{ .size = @intCast(cqe.res) },
+                    .fd = fd,
+                    .type = event_type,
+                    .data = .{ .size = if (cqe.res >= 0) @intCast(cqe.res) else 0 },
                 };
                 event_count += 1;
+
+                // For multishot polls, we don't need to re-add
+                // For one-shot polls, we need to re-add the poll operation
+                if (self.watches.get(fd)) |watch| {
+                    var sqe = self.ring.get_sqe() catch continue;
+                    const poll_events = eventMaskToIoUring(watch.events);
+                    sqe.prep_poll_add(fd, poll_events);
+                    sqe.user_data = cqe.user_data;
+                }
             }
         }
 

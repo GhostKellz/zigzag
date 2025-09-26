@@ -134,10 +134,21 @@ pub const EpollBackend = struct {
                 };
             } else {
                 // Regular I/O event
+                // For read events, we can determine how much data is available
+                var available_bytes: usize = 0;
+                if (epoll_event.events & std.os.linux.EPOLL.IN != 0) {
+                    // Use ioctl FIONREAD to get available bytes for reading
+                    var bytes_available: i32 = 0;
+                    const result = std.os.linux.ioctl(fd, std.os.linux.T.FIONREAD, @intFromPtr(&bytes_available));
+                    if (result == 0 and bytes_available >= 0) {
+                        available_bytes = @intCast(bytes_available);
+                    }
+                }
+
                 events[i] = Event{
                     .fd = fd,
                     .type = epollToEventType(epoll_event.events),
-                    .data = .{ .size = 0 }, // TODO: Add actual data
+                    .data = .{ .size = available_bytes },
                 };
             }
         }

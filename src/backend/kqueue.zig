@@ -3,6 +3,7 @@
 
 const std = @import("std");
 const posix = std.posix;
+const c = std.c;
 const builtin = @import("builtin");
 const EventLoop = @import("../root.zig").EventLoop;
 const Event = @import("../root.zig").Event;
@@ -11,8 +12,14 @@ const EventMask = @import("../root.zig").EventMask;
 const Watch = @import("../root.zig").Watch;
 const Timer = @import("../root.zig").Timer;
 
+// Only compile this backend on supported platforms
+const supports_kqueue = switch (builtin.os.tag) {
+    .macos, .ios, .tvos, .watchos, .visionos, .freebsd, .openbsd, .netbsd => true,
+    else => false,
+};
+
 /// kqueue backend implementation
-pub const KqueueBackend = struct {
+pub const KqueueBackend = if (supports_kqueue) struct {
     kqueue_fd: i32,
     allocator: std.mem.Allocator,
 
@@ -53,11 +60,11 @@ pub const KqueueBackend = struct {
     }
 
     /// Convert kqueue event to EventType
-    fn kqueueToEventType(kevent: posix.system.kevent) EventType {
+    fn kqueueToEventType(kevent: c.Kevent) EventType {
         return switch (kevent.filter) {
-            posix.system.EVFILT.READ => .read_ready,
-            posix.system.EVFILT.WRITE => .write_ready,
-            posix.system.EVFILT.TIMER => .timer_expired,
+            c.EVFILT.READ => .read_ready,
+            c.EVFILT.WRITE => .write_ready,
+            c.EVFILT.TIMER => .timer_expired,
             else => .read_ready, // Default
         };
     }
@@ -67,33 +74,27 @@ pub const KqueueBackend = struct {
         const filters = eventMaskToKqueue(mask);
 
         if (filters.read) {
-            const kevent = posix.system.kevent{
+            const kevent = c.Kevent{
                 .ident = @intCast(fd),
-                .filter = posix.system.EVFILT.READ,
-                .flags = posix.system.EV.ADD | posix.system.EV.ENABLE,
+                .filter = c.EVFILT.READ,
+                .flags = c.EV.ADD | c.EV.ENABLE,
                 .fflags = 0,
                 .data = 0,
                 .udata = 0,
             };
-            const result = posix.system.kevent(self.kqueue_fd, &[_]posix.system.kevent{kevent}, &[_]posix.system.kevent{}, null);
-            if (result < 0) {
-                return posix.unexpectedErrno(@enumFromInt(-result));
-            }
+            _ = std.c.kevent(self.kqueue_fd, &kevent, 1, null, 0, null);
         }
 
         if (filters.write) {
-            const kevent = posix.system.kevent{
+            const kevent = c.Kevent{
                 .ident = @intCast(fd),
-                .filter = posix.system.EVFILT.WRITE,
-                .flags = posix.system.EV.ADD | posix.system.EV.ENABLE,
+                .filter = c.EVFILT.WRITE,
+                .flags = c.EV.ADD | c.EV.ENABLE,
                 .fflags = 0,
                 .data = 0,
                 .udata = 0,
             };
-            const result = posix.system.kevent(self.kqueue_fd, &[_]posix.system.kevent{kevent}, &[_]posix.system.kevent{}, null);
-            if (result < 0) {
-                return posix.unexpectedErrno(@enumFromInt(-result));
-            }
+            _ = std.c.kevent(self.kqueue_fd, &kevent, 1, null, 0, null);
         }
     }
 
@@ -108,54 +109,57 @@ pub const KqueueBackend = struct {
     /// Remove file descriptor from kqueue
     pub fn removeFd(self: *KqueueBackend, fd: i32) !void {
         // Remove read filter
-        const read_kevent = posix.system.kevent{
+        const read_kevent = c.Kevent{
             .ident = @intCast(fd),
-            .filter = posix.system.EVFILT.READ,
-            .flags = posix.system.EV.DELETE,
+            .filter = c.EVFILT.READ,
+            .flags = c.EV.DELETE,
             .fflags = 0,
             .data = 0,
             .udata = 0,
         };
 
         // Remove write filter
-        const write_kevent = posix.system.kevent{
+        const write_kevent = c.Kevent{
             .ident = @intCast(fd),
-            .filter = posix.system.EVFILT.WRITE,
-            .flags = posix.system.EV.DELETE,
+            .filter = c.EVFILT.WRITE,
+            .flags = c.EV.DELETE,
             .fflags = 0,
             .data = 0,
             .udata = 0,
         };
 
         // Try to remove both filters - ignore errors if they don't exist
-        _ = posix.system.kevent(self.kqueue_fd, &[_]posix.system.kevent{read_kevent}, &[_]posix.system.kevent{}, null);
-        _ = posix.system.kevent(self.kqueue_fd, &[_]posix.system.kevent{write_kevent}, &[_]posix.system.kevent{}, null);
+        _ = std.c.kevent(self.kqueue_fd, &read_kevent, 1, null, 0, null);
+        _ = std.c.kevent(self.kqueue_fd, &write_kevent, 1, null, 0, null);
     }
 
     /// Poll for events
     pub fn poll(self: *KqueueBackend, events: []Event, timeout_ms: ?u32) !usize {
-        var kevents: [1024]posix.system.kevent = undefined;
+        var kevents: [1024]c.Kevent = undefined;
 
-        const timeout_spec: ?posix.system.timespec = if (timeout_ms) |ms| .{
+        const timeout_spec: ?c.timespec = if (timeout_ms) |ms| .{
             .sec = @intCast(ms / 1000),
             .nsec = @intCast((ms % 1000) * 1_000_000),
         } else null;
 
-        const num_events = posix.system.kevent(
+        const num_events = std.c.kevent(
             self.kqueue_fd,
-            &[_]posix.system.kevent{},
+            null,
+            0,
             &kevents,
+            @intCast(kevents.len),
             if (timeout_spec) |*ts| ts else null,
         );
 
         if (num_events < 0) {
-            return posix.unexpectedErrno(@enumFromInt(-num_events));
+            return error.KQueueError;
         }
 
-        for (0..@intCast(num_events)) |i| {
+        const count = @min(@as(usize, @intCast(num_events)), events.len);
+        for (0..count) |i| {
             const kevent = kevents[i];
 
-            if (kevent.filter == posix.system.EVFILT.TIMER) {
+            if (kevent.filter == c.EVFILT.TIMER) {
                 // Timer event
                 events[i] = Event{
                     .fd = -1,
@@ -167,78 +171,72 @@ pub const KqueueBackend = struct {
                 events[i] = Event{
                     .fd = @intCast(kevent.ident),
                     .type = kqueueToEventType(kevent),
-                    .data = .{ .size = @intCast(kevent.data) },
+                    .data = .{ .size = @intCast(@abs(kevent.data)) },
                 };
             }
         }
 
-        return @intCast(num_events);
+        return count;
     }
 
     /// Add a timer using kqueue EVFILT_TIMER
     pub fn addTimer(self: *KqueueBackend, timer_id: u32, ms: u64) !void {
-        const kevent = posix.system.kevent{
+        const kevent = c.Kevent{
             .ident = @intCast(timer_id),
-            .filter = posix.system.EVFILT.TIMER,
-            .flags = posix.system.EV.ADD | posix.system.EV.ENABLE | posix.system.EV.ONESHOT,
+            .filter = c.EVFILT.TIMER,
+            .flags = c.EV.ADD | c.EV.ENABLE | c.EV.ONESHOT,
             .fflags = 0,
             .data = @intCast(ms),
             .udata = 0,
         };
 
-        const result = posix.system.kevent(self.kqueue_fd, &[_]posix.system.kevent{kevent}, &[_]posix.system.kevent{}, null);
+        const result = std.c.kevent(self.kqueue_fd, &kevent, 1, null, 0, null);
         if (result < 0) {
-            return posix.unexpectedErrno(@enumFromInt(-result));
+            return error.KQueueError;
         }
-
         try self.timer_map.put(timer_id, {});
     }
 
     /// Add a recurring timer
     pub fn addRecurringTimer(self: *KqueueBackend, timer_id: u32, interval_ms: u64) !void {
-        const kevent = posix.system.kevent{
+        const kevent = c.Kevent{
             .ident = @intCast(timer_id),
-            .filter = posix.system.EVFILT.TIMER,
-            .flags = posix.system.EV.ADD | posix.system.EV.ENABLE,
+            .filter = c.EVFILT.TIMER,
+            .flags = c.EV.ADD | c.EV.ENABLE,
             .fflags = 0,
             .data = @intCast(interval_ms),
             .udata = 0,
         };
 
-        const result = posix.system.kevent(self.kqueue_fd, &[_]posix.system.kevent{kevent}, &[_]posix.system.kevent{}, null);
+        const result = std.c.kevent(self.kqueue_fd, &kevent, 1, null, 0, null);
         if (result < 0) {
-            return posix.unexpectedErrno(@enumFromInt(-result));
+            return error.KQueueError;
         }
-
         try self.timer_map.put(timer_id, {});
     }
 
     /// Cancel a timer
     pub fn cancelTimer(self: *KqueueBackend, timer_id: u32) !void {
         if (self.timer_map.contains(timer_id)) {
-            const kevent = posix.system.kevent{
+            const kevent = c.Kevent{
                 .ident = @intCast(timer_id),
-                .filter = posix.system.EVFILT.TIMER,
-                .flags = posix.system.EV.DELETE,
+                .filter = c.EVFILT.TIMER,
+                .flags = c.EV.DELETE,
                 .fflags = 0,
                 .data = 0,
                 .udata = 0,
             };
 
-            _ = posix.system.kevent(self.kqueue_fd, &[_]posix.system.kevent{kevent}, &[_]posix.system.kevent{}, null);
+            _ = std.c.kevent(self.kqueue_fd, &kevent, 1, null, 0, null);
             _ = self.timer_map.remove(timer_id);
         }
     }
-};
+} else void;
 
 test "KqueueBackend basic operations" {
+    if (!supports_kqueue) return error.SkipZigTest;
+
     const allocator = std.testing.allocator;
-
-    // Skip test on non-BSD/macOS platforms
-    if (builtin.os.tag != .macos and builtin.os.tag != .freebsd and builtin.os.tag != .openbsd and builtin.os.tag != .netbsd) {
-        return error.SkipZigTest;
-    }
-
     var backend = try KqueueBackend.init(allocator);
     defer backend.deinit();
 
@@ -247,6 +245,8 @@ test "KqueueBackend basic operations" {
 }
 
 test "EventMask to kqueue conversion" {
+    if (!supports_kqueue) return error.SkipZigTest;
+
     const mask = EventMask{ .read = true, .write = true };
     const filters = KqueueBackend.eventMaskToKqueue(mask);
 
