@@ -199,18 +199,23 @@ pub const IoUringBackend = struct {
         _ = self.ring.submit() catch 0;
 
         // Wait for events with timeout
-        const wait_nr: u32 = if (timeout_ms) |ms| blk: {
-            if (ms == 0) break :blk 0; // Non-blocking
-            const ts = std.os.linux.kernel_timespec{
-                .sec = @intCast(ms / 1000),
-                .nsec = @intCast((ms % 1000) * 1_000_000),
-            };
-            _ = self.ring.submit_and_wait_timeout(1, &ts) catch 0;
-            break :blk 1;
-        } else 0;
-
-        if (wait_nr == 0) {
-            // Just check without waiting
+        if (timeout_ms) |ms| {
+            if (ms > 0) {
+                // Set up a timeout operation using io_uring's timeout SQE
+                var ts = std.os.linux.kernel_timespec{
+                    .sec = @intCast(ms / 1000),
+                    .nsec = @intCast((ms % 1000) * 1_000_000),
+                };
+                // Queue a timeout SQE with user_data = 0 (reserved for poll timeout)
+                _ = self.ring.timeout(0, &ts, 0, 0) catch {};
+                // Submit and wait for at least 1 event (timeout or actual event)
+                _ = self.ring.submit_and_wait(1) catch 0;
+            } else {
+                // Non-blocking poll (ms == 0)
+                _ = self.ring.submit() catch 0;
+            }
+        } else {
+            // No timeout specified - just submit without waiting
             _ = self.ring.submit() catch 0;
         }
 
@@ -219,6 +224,11 @@ pub const IoUringBackend = struct {
         // Process completions
         while (self.ring.cq_ready() > 0 and event_count < events.len) {
             const cqe = try self.ring.copy_cqe();
+
+            // Skip poll timeout completions (user_data = 0)
+            if (cqe.user_data == 0) {
+                continue;
+            }
 
             // Determine if this is a timer or FD event
             if (cqe.user_data < 1000) {
