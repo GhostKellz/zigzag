@@ -241,7 +241,7 @@ pub const IoUringBackend = struct {
                 event_count += 1;
             } else if (self.user_data_to_fd.get(cqe.user_data)) |fd| {
                 // FD event - map back to file descriptor
-                const event_type = if (cqe.res >= 0) .read_ready else .io_error;
+                const event_type: EventType = if (cqe.res >= 0) .read_ready else .io_error;
                 events[event_count] = Event{
                     .fd = fd,
                     .type = event_type,
