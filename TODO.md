@@ -2,8 +2,15 @@
 
 ## Project Status: Early MVP → Production Release
 
-> **Current Phase**: RC3 (Performance Optimization Complete) → RC4 (Security & Stability)
+> **Current Phase**: ✅ **Theta Phase Complete!** → RC1 (Polish & Testing)
 > **Target**: Production-ready cross-platform event loop for terminal emulators
+>
+> **Theta Achievements (2025-10-15)**:
+> - ✅ Full zlog logging integration
+> - ✅ zdoc API documentation generation
+> - ✅ Complete IOCP backend (Windows)
+> - ✅ Ghostshell-specific optimizations
+> - ✅ Grim editor file watching support
 
 ---
 
@@ -100,7 +107,7 @@
 
 ---
 
-## ✅ Beta → Theta (Feature Complete) - COMPLETED
+## ✅ Beta → Theta (Feature Complete) - ✅ **COMPLETED**
 
 ### Advanced Features
 - [x] **zsync async runtime integration**
@@ -121,7 +128,7 @@
 ### API Stability
 - [x] **API design finalization**
   - [x] Stabilize public interfaces
-  - [x] Add comprehensive documentation
+  - [x] Add comprehensive documentation (zdoc)
   - [x] Implement version compatibility
 
 - [x] **Thread safety considerations**
@@ -134,11 +141,39 @@
   - [x] Add filesystem monitoring
   - [x] Implement directory watching
   - [x] Add file change notifications
+  - [x] Grim editor-specific enhancements
 
 - [x] **Network I/O enhancements**
   - [x] Add socket management utilities
   - [x] Implement connection pooling
   - [x] Add network event optimization
+
+### Theta Phase Enhancements (2025-10-15)
+- [x] **Logging Integration**
+  - [x] Integrate zlog for structured logging
+  - [x] Add logging throughout event loop
+  - [x] Performance-focused log configuration
+
+- [x] **Documentation Generation**
+  - [x] Integrate zdoc for API documentation
+  - [x] Add `zig build docs` command
+  - [x] Document all public APIs
+
+- [x] **Windows IOCP Backend**
+  - [x] Complete IOCP implementation
+  - [x] Full fd watching support
+  - [x] Timer management for Windows
+  - [x] All TODOs resolved
+
+- [x] **Terminal Emulator Optimizations**
+  - [x] Ghostshell-specific features (PTY batching, zero-copy rendering)
+  - [x] Terminal frame timing for high-refresh displays
+  - [x] Event dispatching improvements
+
+- [x] **Editor Support**
+  - [x] Grim editor file watching
+  - [x] LSP event handling
+  - [x] Syntax file monitoring
 
 ---
 

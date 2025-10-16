@@ -145,8 +145,10 @@ pub const SignalHandler = struct {
                 },
             };
 
-            // TODO: Dispatch event to application
-            _ = event;
+            // Dispatch event via event loop's coalescer if available
+            if (self.event_loop.coalescer) |*coalescer| {
+                coalescer.addEvent(event) catch {};
+            }
         }
     }
 };

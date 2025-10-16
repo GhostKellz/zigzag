@@ -24,9 +24,23 @@ pub fn build(b: *std.Build) void {
     const enable_terminal = b.option(bool, "terminal", "Enable terminal features (PTY, signals)") orelse true;
     const enable_zsync = b.option(bool, "zsync", "Enable zsync async runtime integration") orelse true;
     const enable_debug = b.option(bool, "debug_events", "Enable event debugging") orelse false;
+    const enable_zlog = b.option(bool, "zlog", "Enable zlog structured logging") orelse true;
+    const enable_zdoc = b.option(bool, "zdoc", "Enable zdoc documentation generation") orelse true;
 
     // Get zsync dependency if enabled
     const zsync_dep = if (enable_zsync) b.dependency("zsync", .{
+        .target = target,
+        .optimize = optimize,
+    }) else null;
+
+    // Get zlog dependency if enabled
+    const zlog_dep = if (enable_zlog) b.dependency("zlog", .{
+        .target = target,
+        .optimize = optimize,
+    }) else null;
+
+    // Get zdoc dependency if enabled
+    const zdoc_dep = if (enable_zdoc) b.dependency("zdoc", .{
         .target = target,
         .optimize = optimize,
     }) else null;
@@ -56,6 +70,11 @@ pub fn build(b: *std.Build) void {
         mod.addImport("zsync", dep.module("zsync"));
     }
 
+    // Add zlog module if enabled
+    if (zlog_dep) |dep| {
+        mod.addImport("zlog", dep.module("zlog"));
+    }
+
     // Add build options as module options
     const build_options = b.addOptions();
     build_options.addOption(bool, "enable_io_uring", enable_io_uring);
@@ -65,6 +84,8 @@ pub fn build(b: *std.Build) void {
     build_options.addOption(bool, "enable_terminal", enable_terminal);
     build_options.addOption(bool, "enable_zsync", enable_zsync);
     build_options.addOption(bool, "enable_debug", enable_debug);
+    build_options.addOption(bool, "enable_zlog", enable_zlog);
+    build_options.addOption(bool, "enable_zdoc", enable_zdoc);
 
     mod.addImport("build_options", build_options.createModule());
 
@@ -164,6 +185,31 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run tests");
     test_step.dependOn(&run_mod_tests.step);
     test_step.dependOn(&run_exe_tests.step);
+
+    // Documentation generation step
+    if (zdoc_dep) |dep| {
+        const zdoc_exe = dep.artifact("zdoc");
+        const docs_step = b.step("docs", "Generate API documentation");
+
+        const run_zdoc = b.addRunArtifact(zdoc_exe);
+        run_zdoc.addArgs(&.{
+            "--format=html",
+            "src/root.zig",
+            "src/terminal.zig",
+            "src/event_coalescing.zig",
+            "src/timer_wheel.zig",
+            "src/pty.zig",
+            "src/signals.zig",
+            "src/file_watching.zig",
+            "src/network_io.zig",
+            "src/advanced_timers.zig",
+            "src/async_runtime.zig",
+            "src/api.zig",
+            "docs/",
+        });
+
+        docs_step.dependOn(&run_zdoc.step);
+    }
 
     // Just like flags, top level steps are also listed in the `--help` menu.
     //

@@ -4,11 +4,13 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const build_options = @import("build_options");
+const logging = @import("logging.zig");
 
 // Backend imports - conditionally compiled based on build options
 const EpollBackend = if (build_options.enable_epoll) @import("backend/epoll.zig").EpollBackend else void;
 const IoUringBackend = if (build_options.enable_io_uring) @import("backend/io_uring.zig").IoUringBackend else void;
 const KqueueBackend = if (build_options.enable_kqueue) @import("backend/kqueue.zig").KqueueBackend else void;
+const IOCPBackend = if (build_options.enable_iocp) @import("backend/iocp.zig").IOCPBackend else void;
 
 // Event coalescing system
 const EventCoalescer = @import("event_coalescing.zig").EventCoalescer;
@@ -159,6 +161,7 @@ pub const EventLoop = struct {
     epoll_backend: if (build_options.enable_epoll) ?EpollBackend else void = if (build_options.enable_epoll) null else {},
     io_uring_backend: if (build_options.enable_io_uring) ?IoUringBackend else void = if (build_options.enable_io_uring) null else {},
     kqueue_backend: if (build_options.enable_kqueue) ?KqueueBackend else void = if (build_options.enable_kqueue) null else {},
+    iocp_backend: if (build_options.enable_iocp) ?IOCPBackend else void = if (build_options.enable_iocp) null else {},
 
     // Watch management
     watches: std.AutoHashMap(i32, Watch),
@@ -199,6 +202,7 @@ pub const EventLoop = struct {
             .epoll_backend = if (build_options.enable_epoll) null else {},
             .io_uring_backend = if (build_options.enable_io_uring) null else {},
             .kqueue_backend = if (build_options.enable_kqueue) null else {},
+            .iocp_backend = if (build_options.enable_iocp) null else {},
             .watches = watches,
             .next_watch_id = 0,
             .timers = timers,
@@ -211,6 +215,7 @@ pub const EventLoop = struct {
         switch (backend) {
             .epoll => {
                 if (build_options.enable_epoll) {
+                    logging.logBackendInit("epoll");
                     loop.epoll_backend = try EpollBackend.init(allocator);
                 } else {
                     @panic("epoll backend disabled at compile time");
@@ -218,6 +223,7 @@ pub const EventLoop = struct {
             },
             .io_uring => {
                 if (build_options.enable_io_uring) {
+                    logging.logBackendInit("io_uring");
                     loop.io_uring_backend = try IoUringBackend.init(allocator, @intCast(options.max_events));
                 } else {
                     @panic("io_uring backend disabled at compile time");
@@ -226,6 +232,7 @@ pub const EventLoop = struct {
             .kqueue => {
                 if (build_options.enable_kqueue) {
                     if (KqueueBackend != void) {
+                        logging.logBackendInit("kqueue");
                         loop.kqueue_backend = try KqueueBackend.init(allocator);
                     } else {
                         @panic("kqueue backend not supported on this platform");
@@ -235,9 +242,9 @@ pub const EventLoop = struct {
                 }
             },
             .iocp => {
-                if (build_options.enable_iocp) {
-                    // TODO: Initialize IOCP backend
-                    return error.BackendNotImplemented;
+                if (build_options.enable_iocp and IOCPBackend != void) {
+                    logging.logBackendInit("iocp");
+                    loop.iocp_backend = try IOCPBackend.init(allocator);
                 } else {
                     @panic("IOCP backend disabled at compile time");
                 }
@@ -262,6 +269,11 @@ pub const EventLoop = struct {
         }
         if (build_options.enable_kqueue and KqueueBackend != void) {
             if (self.kqueue_backend) |*backend| {
+                backend.deinit();
+            }
+        }
+        if (build_options.enable_iocp and IOCPBackend != void) {
+            if (self.iocp_backend) |*backend| {
                 backend.deinit();
             }
         }
@@ -312,9 +324,11 @@ pub const EventLoop = struct {
                 }
             },
             .iocp => {
-                if (build_options.enable_iocp) {
-                    // TODO: Implement IOCP polling
-                    return error.BackendNotImplemented;
+                if (build_options.enable_iocp and IOCPBackend != void) {
+                    if (self.iocp_backend) |*backend| {
+                        return backend.poll(events, timeout_ms);
+                    }
+                    return error.BackendNotInitialized;
                 } else {
                     @panic("IOCP backend disabled at compile time");
                 }
@@ -437,9 +451,12 @@ pub const EventLoop = struct {
                 }
             },
             .iocp => {
-                if (build_options.enable_iocp) {
-                    // TODO: Implement IOCP fd watching
-                    return error.BackendNotImplemented;
+                if (build_options.enable_iocp and IOCPBackend != void) {
+                    if (self.iocp_backend) |*backend| {
+                        try backend.addFd(fd, events);
+                    } else {
+                        return error.BackendNotInitialized;
+                    }
                 } else {
                     @panic("IOCP backend disabled at compile time");
                 }
@@ -491,8 +508,15 @@ pub const EventLoop = struct {
                 }
             },
             .iocp => {
-                // TODO: Implement IOCP fd modification
-                return error.BackendNotImplemented;
+                if (build_options.enable_iocp and IOCPBackend != void) {
+                    if (self.iocp_backend) |*backend| {
+                        try backend.modifyFd(watch.fd, events);
+                    } else {
+                        return error.BackendNotInitialized;
+                    }
+                } else {
+                    @panic("IOCP backend disabled at compile time");
+                }
             },
         }
 
@@ -526,7 +550,11 @@ pub const EventLoop = struct {
                 }
             },
             .iocp => {
-                // TODO: Implement IOCP fd removal
+                if (build_options.enable_iocp and IOCPBackend != void) {
+                    if (self.iocp_backend) |*backend| {
+                        backend.removeFd(watch.fd) catch {};
+                    }
+                }
             },
         }
 
@@ -579,8 +607,15 @@ pub const EventLoop = struct {
                 }
             },
             .iocp => {
-                // TODO: Implement IOCP timer
-                return error.BackendNotImplemented;
+                if (build_options.enable_iocp and IOCPBackend != void) {
+                    if (self.iocp_backend) |*backend| {
+                        try backend.addTimer(timer_id, ms);
+                    } else {
+                        return error.BackendNotInitialized;
+                    }
+                } else {
+                    @panic("IOCP backend disabled at compile time");
+                }
             },
         }
 
@@ -636,8 +671,15 @@ pub const EventLoop = struct {
                 }
             },
             .iocp => {
-                // TODO: Implement IOCP recurring timer
-                return error.BackendNotImplemented;
+                if (build_options.enable_iocp and IOCPBackend != void) {
+                    if (self.iocp_backend) |*backend| {
+                        try backend.addRecurringTimer(timer_id, interval_ms);
+                    } else {
+                        return error.BackendNotInitialized;
+                    }
+                } else {
+                    @panic("IOCP backend disabled at compile time");
+                }
             },
         }
 
@@ -672,7 +714,11 @@ pub const EventLoop = struct {
                 }
             },
             .iocp => {
-                // TODO: Implement IOCP timer cancellation
+                if (build_options.enable_iocp and IOCPBackend != void) {
+                    if (self.iocp_backend) |*backend| {
+                        backend.cancelTimer(timer.id) catch {};
+                    }
+                }
             },
         }
 
