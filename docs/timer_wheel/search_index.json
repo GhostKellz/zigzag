@@ -1,0 +1,50 @@
+{
+  "version": "1.0",
+  "entries": [
+    {
+      "name": "std",
+      "type": "variable",
+      "file": "src/timer_wheel.zig",
+      "line": 4,
+      "description": "Timer wheel implementation for efficient O(1) timer operations",
+      "keywords": ["std", "variable", "Timer", "wheel", "implementation", "for", "efficient", "O(1)", "timer", "operations"]
+    },
+    {
+      "name": "Timer",
+      "type": "variable",
+      "file": "src/timer_wheel.zig",
+      "line": 5,
+      "keywords": ["Timer", "variable"]
+    },
+    {
+      "name": "WheelConfig",
+      "type": "struct",
+      "file": "src/timer_wheel.zig",
+      "line": 8,
+      "keywords": ["WheelConfig", "struct"]
+    },
+    {
+      "name": "TimerEntry",
+      "type": "struct",
+      "file": "src/timer_wheel.zig",
+      "line": 18,
+      "description": "Timer entry in the wheel",
+      "keywords": ["TimerEntry", "struct", "Timer", "entry", "the", "wheel"]
+    },
+    {
+      "name": "WheelLevel",
+      "type": "struct",
+      "file": "src/timer_wheel.zig",
+      "line": 27,
+      "description": "Timer wheel level",
+      "keywords": ["WheelLevel", "struct", "Timer", "wheel", "level"]
+    },
+    {
+      "name": "TimerWheel",
+      "type": "struct",
+      "file": "src/timer_wheel.zig",
+      "line": 53,
+      "keywords": ["TimerWheel", "struct"]
+    }
+  ]
+}

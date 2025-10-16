@@ -1,0 +1,108 @@
+{
+  "version": "1.0",
+  "entries": [
+    {
+      "name": "std",
+      "type": "variable",
+      "file": "src/file_watching.zig",
+      "line": 4,
+      "description": "File watching capabilities for ZigZag",
+      "keywords": ["std", "variable", "File", "watching", "capabilities", "for", "ZigZag"]
+    },
+    {
+      "name": "builtin",
+      "type": "variable",
+      "file": "src/file_watching.zig",
+      "line": 5,
+      "keywords": ["builtin", "variable"]
+    },
+    {
+      "name": "posix",
+      "type": "variable",
+      "file": "src/file_watching.zig",
+      "line": 6,
+      "keywords": ["posix", "variable"]
+    },
+    {
+      "name": "EventLoop",
+      "type": "variable",
+      "file": "src/file_watching.zig",
+      "line": 7,
+      "keywords": ["EventLoop", "variable"]
+    },
+    {
+      "name": "Event",
+      "type": "variable",
+      "file": "src/file_watching.zig",
+      "line": 8,
+      "keywords": ["Event", "variable"]
+    },
+    {
+      "name": "FileEvent",
+      "type": "enum",
+      "file": "src/file_watching.zig",
+      "line": 11,
+      "keywords": ["FileEvent", "enum"]
+    },
+    {
+      "name": "WatchConfig",
+      "type": "struct",
+      "file": "src/file_watching.zig",
+      "line": 21,
+      "keywords": ["WatchConfig", "struct"]
+    },
+    {
+      "name": "FileEventNotification",
+      "type": "struct",
+      "file": "src/file_watching.zig",
+      "line": 39,
+      "keywords": ["FileEventNotification", "struct"]
+    },
+    {
+      "name": "FileWatcher",
+      "type": "struct",
+      "file": "src/file_watching.zig",
+      "line": 48,
+      "keywords": ["FileWatcher", "struct"]
+    },
+    {
+      "name": "InotifyBackend",
+      "type": "struct",
+      "file": "src/file_watching.zig",
+      "line": 199,
+      "description": "Linux inotify backend",
+      "keywords": ["InotifyBackend", "struct", "Linux", "inotify", "backend"]
+    },
+    {
+      "name": "KqueueBackend",
+      "type": "struct",
+      "file": "src/file_watching.zig",
+      "line": 282,
+      "description": "macOS/BSD kqueue backend",
+      "keywords": ["KqueueBackend", "struct", "macOS/BSD", "kqueue", "backend"]
+    },
+    {
+      "name": "WindowsBackend",
+      "type": "struct",
+      "file": "src/file_watching.zig",
+      "line": 386,
+      "description": "Windows ReadDirectoryChangesW backend",
+      "keywords": ["WindowsBackend", "struct", "Windows", "ReadDirectoryChangesW", "backend"]
+    },
+    {
+      "name": "PollingBackend",
+      "type": "struct",
+      "file": "src/file_watching.zig",
+      "line": 424,
+      "description": "Fallback polling backend for unsupported platforms",
+      "keywords": ["PollingBackend", "struct", "Fallback", "polling", "backend", "for", "unsupported", "platforms"]
+    },
+    {
+      "name": "DirectoryScanner",
+      "type": "struct",
+      "file": "src/file_watching.zig",
+      "line": 531,
+      "keywords": ["DirectoryScanner", "struct"]
+    }
+  ]
+}

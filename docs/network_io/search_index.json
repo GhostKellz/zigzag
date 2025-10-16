@@ -1,0 +1,118 @@
+{
+  "version": "1.0",
+  "entries": [
+    {
+      "name": "std",
+      "type": "variable",
+      "file": "src/network_io.zig",
+      "line": 4,
+      "description": "High-performance network I/O with connection pooling and async operations",
+      "keywords": ["std", "variable", "High-performance", "network", "I/O", "with", "connection", "pooling", "and", "async", "operations"]
+    },
+    {
+      "name": "builtin",
+      "type": "variable",
+      "file": "src/network_io.zig",
+      "line": 5,
+      "keywords": ["builtin", "variable"]
+    },
+    {
+      "name": "net",
+      "type": "variable",
+      "file": "src/network_io.zig",
+      "line": 6,
+      "keywords": ["net", "variable"]
+    },
+    {
+      "name": "os",
+      "type": "variable",
+      "file": "src/network_io.zig",
+      "line": 7,
+      "keywords": ["os", "variable"]
+    },
+    {
+      "name": "print",
+      "type": "variable",
+      "file": "src/network_io.zig",
+      "line": 8,
+      "keywords": ["print", "variable"]
+    },
+    {
+      "name": "EventLoop",
+      "type": "variable",
+      "file": "src/network_io.zig",
+      "line": 10,
+      "keywords": ["EventLoop", "variable"]
+    },
+    {
+      "name": "Event",
+      "type": "variable",
+      "file": "src/network_io.zig",
+      "line": 11,
+      "keywords": ["Event", "variable"]
+    },
+    {
+      "name": "EventType",
+      "type": "variable",
+      "file": "src/network_io.zig",
+      "line": 12,
+      "keywords": ["EventType", "variable"]
+    },
+    {
+      "name": "Backend",
+      "type": "variable",
+      "file": "src/network_io.zig",
+      "line": 13,
+      "keywords": ["Backend", "variable"]
+    },
+    {
+      "name": "ConnectionState",
+      "type": "enum",
+      "file": "src/network_io.zig",
+      "line": 16,
+      "keywords": ["ConnectionState", "enum"]
+    },
+    {
+      "name": "PoolStats",
+      "type": "struct",
+      "file": "src/network_io.zig",
+      "line": 26,
+      "keywords": ["PoolStats", "struct"]
+    },
+    {
+      "name": "NetworkConnection",
+      "type": "struct",
+      "file": "src/network_io.zig",
+      "line": 50,
+      "keywords": ["NetworkConnection", "struct"]
+    },
+    {
+      "name": "PoolConfig",
+      "type": "struct",
+      "file": "src/network_io.zig",
+      "line": 95,
+      "keywords": ["PoolConfig", "struct"]
+    },
+    {
+      "name": "ConnectionPool",
+      "type": "struct",
+      "file": "src/network_io.zig",
+      "line": 106,
+      "keywords": ["ConnectionPool", "struct"]
+    },
+    {
+      "name": "BandwidthMonitor",
+      "type": "struct",
+      "file": "src/network_io.zig",
+      "line": 352,
+      "keywords": ["BandwidthMonitor", "struct"]
+    },
+    {
+      "name": "NetworkManager",
+      "type": "struct",
+      "file": "src/network_io.zig",
+      "line": 432,
+      "keywords": ["NetworkManager", "struct"]
+    }
+  ]
+}

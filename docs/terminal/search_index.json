@@ -1,0 +1,62 @@
+{
+  "version": "1.0",
+  "entries": [
+    {
+      "name": "std",
+      "type": "variable",
+      "file": "src/terminal.zig",
+      "line": 4,
+      "description": "Terminal-specific features for zigzag event loop",
+      "keywords": ["std", "variable", "Terminal-specific", "features", "for", "zigzag", "event", "loop"]
+    },
+    {
+      "name": "posix",
+      "type": "variable",
+      "file": "src/terminal.zig",
+      "line": 5,
+      "keywords": ["posix", "variable"]
+    },
+    {
+      "name": "EventLoop",
+      "type": "variable",
+      "file": "src/terminal.zig",
+      "line": 6,
+      "keywords": ["EventLoop", "variable"]
+    },
+    {
+      "name": "Event",
+      "type": "variable",
+      "file": "src/terminal.zig",
+      "line": 7,
+      "keywords": ["Event", "variable"]
+    },
+    {
+      "name": "EventType",
+      "type": "variable",
+      "file": "src/terminal.zig",
+      "line": 8,
+      "keywords": ["EventType", "variable"]
+    },
+    {
+      "name": "Pty",
+      "type": "struct",
+      "file": "src/terminal.zig",
+      "line": 11,
+      "keywords": ["Pty", "struct"]
+    },
+    {
+      "name": "SignalHandler",
+      "type": "struct",
+      "file": "src/terminal.zig",
+      "line": 77,
+      "keywords": ["SignalHandler", "struct"]
+    },
+    {
+      "name": "EventCoalescer",
+      "type": "struct",
+      "file": "src/terminal.zig",
+      "line": 157,
+      "keywords": ["EventCoalescer", "struct"]
+    }
+  ]
+}

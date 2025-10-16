@@ -1,0 +1,153 @@
+{
+  "version": "1.0",
+  "entries": [
+    {
+      "name": "std",
+      "type": "variable",
+      "file": "src/root.zig",
+      "line": 4,
+      "description": "zigzag - High-performance event loop for Zig",
+      "keywords": ["std", "variable", "zigzag", "High-performance", "event", "loop", "for", "Zig"]
+    },
+    {
+      "name": "builtin",
+      "type": "variable",
+      "file": "src/root.zig",
+      "line": 5,
+      "keywords": ["builtin", "variable"]
+    },
+    {
+      "name": "build_options",
+      "type": "variable",
+      "file": "src/root.zig",
+      "line": 6,
+      "keywords": ["build_options", "variable"]
+    },
+    {
+      "name": "logging",
+      "type": "variable",
+      "file": "src/root.zig",
+      "line": 7,
+      "keywords": ["logging", "variable"]
+    },
+    {
+      "name": "EpollBackend",
+      "type": "variable",
+      "file": "src/root.zig",
+      "line": 10,
+      "keywords": ["EpollBackend", "variable"]
+    },
+    {
+      "name": "IoUringBackend",
+      "type": "variable",
+      "file": "src/root.zig",
+      "line": 11,
+      "keywords": ["IoUringBackend", "variable"]
+    },
+    {
+      "name": "KqueueBackend",
+      "type": "variable",
+      "file": "src/root.zig",
+      "line": 12,
+      "keywords": ["KqueueBackend", "variable"]
+    },
+    {
+      "name": "IOCPBackend",
+      "type": "variable",
+      "file": "src/root.zig",
+      "line": 13,
+      "keywords": ["IOCPBackend", "variable"]
+    },
+    {
+      "name": "EventCoalescer",
+      "type": "variable",
+      "file": "src/root.zig",
+      "line": 16,
+      "keywords": ["EventCoalescer", "variable"]
+    },
+    {
+      "name": "CoalescingConfig",
+      "type": "variable",
+      "file": "src/root.zig",
+      "line": 17,
+      "keywords": ["CoalescingConfig", "variable"]
+    },
+    {
+      "name": "zsync",
+      "type": "variable",
+      "file": "src/root.zig",
+      "line": 20,
+      "keywords": ["zsync", "variable"]
+    },
+    {
+      "name": "Backend",
+      "type": "enum",
+      "file": "src/root.zig",
+      "line": 23,
+      "keywords": ["Backend", "enum"]
+    },
+    {
+      "name": "EventType",
+      "type": "enum",
+      "file": "src/root.zig",
+      "line": 75,
+      "keywords": ["EventType", "enum"]
+    },
+    {
+      "name": "EventData",
+      "type": "union",
+      "file": "src/root.zig",
+      "line": 97,
+      "keywords": ["EventData", "union"]
+    },
+    {
+      "name": "Event",
+      "type": "struct",
+      "file": "src/root.zig",
+      "line": 105,
+      "keywords": ["Event", "struct"]
+    },
+    {
+      "name": "EventMask",
+      "type": "struct",
+      "file": "src/root.zig",
+      "line": 112,
+      "keywords": ["EventMask", "struct"]
+    },
+    {
+      "name": "TimerType",
+      "type": "enum",
+      "file": "src/root.zig",
+      "line": 124,
+      "keywords": ["TimerType", "enum"]
+    },
+    {
+      "name": "Timer",
+      "type": "struct",
+      "file": "src/root.zig",
+      "line": 130,
+      "keywords": ["Timer", "struct"]
+    },
+    {
+      "name": "Watch",
+      "type": "struct",
+      "file": "src/root.zig",
+      "line": 140,
+      "keywords": ["Watch", "struct"]
+    },
+    {
+      "name": "Options",
+      "type": "struct",
+      "file": "src/root.zig",
+      "line": 148,
+      "keywords": ["Options", "struct"]
+    },
+    {
+      "name": "EventLoop",
+      "type": "struct",
+      "file": "src/root.zig",
+      "line": 155,
+      "keywords": ["EventLoop", "struct"]
+    }
+  ]
+}

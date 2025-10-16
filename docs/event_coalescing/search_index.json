@@ -1,0 +1,41 @@
+{
+  "version": "1.0",
+  "entries": [
+    {
+      "name": "std",
+      "type": "variable",
+      "file": "src/event_coalescing.zig",
+      "line": 4,
+      "description": "Event coalescing system for ZigZag",
+      "keywords": ["std", "variable", "Event", "coalescing", "system", "for", "ZigZag"]
+    },
+    {
+      "name": "Event",
+      "type": "variable",
+      "file": "src/event_coalescing.zig",
+      "line": 5,
+      "keywords": ["Event", "variable"]
+    },
+    {
+      "name": "EventType",
+      "type": "variable",
+      "file": "src/event_coalescing.zig",
+      "line": 6,
+      "keywords": ["EventType", "variable"]
+    },
+    {
+      "name": "CoalescingConfig",
+      "type": "struct",
+      "file": "src/event_coalescing.zig",
+      "line": 9,
+      "keywords": ["CoalescingConfig", "struct"]
+    },
+    {
+      "name": "EventCoalescer",
+      "type": "struct",
+      "file": "src/event_coalescing.zig",
+      "line": 19,
+      "keywords": ["EventCoalescer", "struct"]
+    }
+  ]
+}

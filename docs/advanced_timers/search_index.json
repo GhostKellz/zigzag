@@ -1,0 +1,83 @@
+{
+  "version": "1.0",
+  "entries": [
+    {
+      "name": "std",
+      "type": "variable",
+      "file": "src/advanced_timers.zig",
+      "line": 4,
+      "description": "Advanced timer features for ZigZag",
+      "keywords": ["std", "variable", "Advanced", "timer", "features", "for", "ZigZag"]
+    },
+    {
+      "name": "builtin",
+      "type": "variable",
+      "file": "src/advanced_timers.zig",
+      "line": 5,
+      "keywords": ["builtin", "variable"]
+    },
+    {
+      "name": "Timer",
+      "type": "variable",
+      "file": "src/advanced_timers.zig",
+      "line": 6,
+      "keywords": ["Timer", "variable"]
+    },
+    {
+      "name": "TimerType",
+      "type": "variable",
+      "file": "src/advanced_timers.zig",
+      "line": 7,
+      "keywords": ["TimerType", "variable"]
+    },
+    {
+      "name": "HighResTimer",
+      "type": "struct",
+      "file": "src/advanced_timers.zig",
+      "line": 10,
+      "keywords": ["HighResTimer", "struct"]
+    },
+    {
+      "name": "TimerStats",
+      "type": "struct",
+      "file": "src/advanced_timers.zig",
+      "line": 76,
+      "keywords": ["TimerStats", "struct"]
+    },
+    {
+      "name": "TimerContext",
+      "type": "struct",
+      "file": "src/advanced_timers.zig",
+      "line": 172,
+      "keywords": ["TimerContext", "struct"]
+    },
+    {
+      "name": "AdvancedTimer",
+      "type": "struct",
+      "file": "src/advanced_timers.zig",
+      "line": 208,
+      "keywords": ["AdvancedTimer", "struct"]
+    },
+    {
+      "name": "TimerRegistry",
+      "type": "struct",
+      "file": "src/advanced_timers.zig",
+      "line": 277,
+      "keywords": ["TimerRegistry", "struct"]
+    },
+    {
+      "name": "TimerScheduler",
+      "type": "struct",
+      "file": "src/advanced_timers.zig",
+      "line": 376,
+      "keywords": ["TimerScheduler", "struct"]
+    },
+    {
+      "name": "TimerBenchmark",
+      "type": "struct",
+      "file": "src/advanced_timers.zig",
+      "line": 411,
+      "keywords": ["TimerBenchmark", "struct"]
+    }
+  ]
+}

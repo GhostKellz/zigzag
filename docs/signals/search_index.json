@@ -1,0 +1,98 @@
+{
+  "version": "1.0",
+  "entries": [
+    {
+      "name": "std",
+      "type": "variable",
+      "file": "src/signals.zig",
+      "line": 4,
+      "description": "Signal handling for terminal emulators",
+      "keywords": ["std", "variable", "Signal", "handling", "for", "terminal", "emulators"]
+    },
+    {
+      "name": "builtin",
+      "type": "variable",
+      "file": "src/signals.zig",
+      "line": 5,
+      "keywords": ["builtin", "variable"]
+    },
+    {
+      "name": "posix",
+      "type": "variable",
+      "file": "src/signals.zig",
+      "line": 6,
+      "keywords": ["posix", "variable"]
+    },
+    {
+      "name": "c",
+      "type": "variable",
+      "file": "src/signals.zig",
+      "line": 7,
+      "keywords": ["c", "variable"]
+    },
+    {
+      "name": "Event",
+      "type": "variable",
+      "file": "src/signals.zig",
+      "line": 8,
+      "keywords": ["Event", "variable"]
+    },
+    {
+      "name": "EventType",
+      "type": "variable",
+      "file": "src/signals.zig",
+      "line": 9,
+      "keywords": ["EventType", "variable"]
+    },
+    {
+      "name": "SignalEvent",
+      "type": "struct",
+      "file": "src/signals.zig",
+      "line": 12,
+      "keywords": ["SignalEvent", "struct"]
+    },
+    {
+      "name": "SignalConfig",
+      "type": "struct",
+      "file": "src/signals.zig",
+      "line": 20,
+      "keywords": ["SignalConfig", "struct"]
+    },
+    {
+      "name": "SignalHandler",
+      "type": "struct",
+      "file": "src/signals.zig",
+      "line": 34,
+      "keywords": ["SignalHandler", "struct"]
+    },
+    {
+      "name": "SignalPending",
+      "type": "struct",
+      "file": "src/signals.zig",
+      "line": 226,
+      "description": "Global signal tracking for traditional handlers",
+      "keywords": ["SignalPending", "struct", "Global", "signal", "tracking", "for", "traditional", "handlers"]
+    },
+    {
+      "name": "global_signal_pending",
+      "type": "variable",
+      "file": "src/signals.zig",
+      "line": 246,
+      "keywords": ["global_signal_pending", "variable"]
+    },
+    {
+      "name": "ChildMonitor",
+      "type": "struct",
+      "file": "src/signals.zig",
+      "line": 249,
+      "keywords": ["ChildMonitor", "struct"]
+    },
+    {
+      "name": "FocusTracker",
+      "type": "struct",
+      "file": "src/signals.zig",
+      "line": 326,
+      "keywords": ["FocusTracker", "struct"]
+    }
+  ]
+}

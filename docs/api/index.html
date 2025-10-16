@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Zdoc Documentation</title>
+<style>
+body {{ font-family: Arial, sans-serif; margin: 0; padding: 0; }}
+h1 {{ color: #333; margin: 0 0 20px 0; }}
+h2 {{ color: #666; border-bottom: 1px solid #ddd; margin: 30px 0 15px 0; }}
+.container {{ display: flex; min-height: 100vh; }}
+.sidebar {{ width: 250px; background: #f8f9fa; border-right: 1px solid #ddd; padding: 20px; overflow-y: auto; }}
+.content {{ flex: 1; padding: 40px; }}
+.nav-section {{ margin-bottom: 20px; }}
+.nav-title {{ font-weight: bold; color: #666; margin-bottom: 8px; text-transform: uppercase; font-size: 0.9em; }}
+.nav-item {{ display: block; color: #007acc; text-decoration: none; padding: 4px 8px; border-radius: 3px; margin-bottom: 2px; }}
+.nav-item:hover {{ background: #e9ecef; }}
+.nav-function {{ border-left: 3px solid #28a745; }}
+.nav-struct {{ border-left: 3px solid #dc3545; }}
+.nav-enum {{ border-left: 3px solid #ffc107; }}
+.nav-union {{ border-left: 3px solid #17a2b8; }}
+.nav-variable {{ border-left: 3px solid #6c757d; }}
+.declaration {{ margin: 10px 0; padding: 10px; background: #f8f9fa; border-left: 3px solid #007acc; }}
+.function {{ border-left-color: #28a745; }}
+.struct {{ border-left-color: #dc3545; }}
+.enum {{ border-left-color: #ffc107; }}
+.union {{ border-left-color: #17a2b8; }}
+.variable {{ border-left-color: #6c757d; }}
+.name {{ font-weight: bold; }}
+.kind {{ color: #666; font-size: 0.8em; text-transform: uppercase; }}
+.signature {{ font-family: monospace; color: #333; }}
+.doc-comment {{ color: #555; font-style: italic; margin-top: 5px; padding: 5px; background: #f0f0f0; border-radius: 3px; }}
+.code-block {{ background: #f5f5f5; border: 1px solid #ddd; border-radius: 4px; padding: 15px; margin: 10px 0; overflow-x: auto; }}
+.code-block code {{ background: none; padding: 0; }}
+.zig-keyword {{ color: #0066cc; font-weight: bold; }}
+.zig-string {{ color: #008800; }}
+.zig-number {{ color: #aa6600; }}
+.zig-comment {{ color: #888888; font-style: italic; }}
+.zig-type {{ color: #0088aa; font-weight: bold; }}
+.zig-function {{ color: #7700aa; }}
+.generic-indicator {{ color: #cc6600; font-weight: bold; font-style: italic; }}
+.badge {{ display: inline-block; padding: 2px 8px; border-radius: 3px; font-size: 0.75em; font-weight: bold; margin-left: 5px; }}
+.badge-pub {{ background: #28a745; color: white; }}
+.badge-export {{ background: #007acc; color: white; }}
+.badge-extern {{ background: #6c757d; color: white; }}
+.badge-generic {{ background: #cc6600; color: white; }}
+.params-section {{ margin: 10px 0; padding: 10px; background: #f8f9fa; border-radius: 4px; }}
+.params-title {{ font-weight: bold; color: #555; margin-bottom: 5px; }}
+.param-item {{ margin: 5px 0 5px 15px; font-family: monospace; }}
+.param-name {{ color: #0066cc; font-weight: bold; }}
+.param-type {{ color: #0088aa; }}
+.return-section {{ margin: 10px 0; padding: 8px; background: #e9f7ef; border-left: 3px solid #28a745; }}
+.error-section {{ margin: 10px 0; padding: 8px; background: #fff3cd; border-left: 3px solid #ffc107; }}
+.fields-table {{ width: 100%; border-collapse: collapse; margin: 10px 0; }}
+.fields-table th {{ background: #e9ecef; padding: 8px; text-align: left; border: 1px solid #ddd; }}
+.fields-table td {{ padding: 8px; border: 1px solid #ddd; font-family: monospace; }}
+.source-link {{ display: inline-block; margin-top: 5px; font-size: 0.85em; color: #007acc; text-decoration: none; }}
+.source-link:hover {{ text-decoration: underline; }}
+.doc-tags {{ margin: 10px 0; }}
+.doc-tag {{ margin: 5px 0; padding: 5px; background: #f0f4f8; border-left: 2px solid #007acc; }}
+.doc-tag-label {{ font-weight: bold; color: #007acc; }}
+
+/* Mobile responsive design */
+@media (max-width: 768px) {{
+  .container {{ flex-direction: column; }}
+  .sidebar {{ width: 100%; border-right: none; border-bottom: 1px solid #ddd; padding: 15px; }}
+  .content {{ padding: 20px; }}
+  .nav-section {{ display: inline-block; margin-right: 20px; vertical-align: top; }}
+  .nav-title {{ margin-bottom: 5px; }}
+  .nav-item {{ display: inline-block; margin-right: 10px; margin-bottom: 5px; }}
+  h1 {{ font-size: 1.8em; }}
+  h2 {{ font-size: 1.4em; }}
+  .declaration {{ margin: 8px 0; padding: 8px; }}
+}}
+
+@media (max-width: 480px) {{
+  .content {{ padding: 15px; }}
+  .sidebar {{ padding: 10px; }}
+  h1 {{ font-size: 1.6em; }}
+  h2 {{ font-size: 1.2em; }}
+  .nav-section {{ display: block; margin-bottom: 15px; }}
+  .declaration {{ margin: 6px 0; padding: 6px; }}
+}}
+</style>
+</head>
+<body>
+<div class="container">
+<div class="sidebar">
+<h3>Navigation</h3>
+<div style="margin-bottom: 15px;">
+<input type="text" id="search" placeholder="Search declarations..." style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+</div>
+<div class="nav-section">
+<div class="nav-title">Structs</div><a href="#Version" class="nav-item nav-struct">Version</a><a href="#Features" class="nav-item nav-struct">Features</a><a href="#ConfigBuilder" class="nav-item nav-struct">ConfigBuilder</a><a href="#Application" class="nav-item nav-struct">Application</a><a href="#convenience" class="nav-item nav-struct">convenience</a><a href="#docs" class="nav-item nav-struct">docs</a></div>
+<div class="nav-section">
+<div class="nav-title">Enums</div><a href="#ApiLevel" class="nav-item nav-enum">ApiLevel</a></div>
+<div class="nav-section">
+<div class="nav-title">Error Sets</div><a href="#ZigZagError" class="nav-item nav-error">ZigZagError</a></div>
+<div class="nav-section">
+<div class="nav-title">Variables</div><a href="#std" class="nav-item nav-variable">std</a><a href="#builtin" class="nav-item nav-variable">builtin</a><a href="#EventLoop" class="nav-item nav-variable">EventLoop</a><a href="#Event" class="nav-item nav-variable">Event</a><a href="#EventType" class="nav-item nav-variable">EventType</a><a href="#EventMask" class="nav-item nav-variable">EventMask</a><a href="#Backend" class="nav-item nav-variable">Backend</a><a href="#Timer" class="nav-item nav-variable">Timer</a><a href="#TimerType" class="nav-item nav-variable">TimerType</a><a href="#Watch" class="nav-item nav-variable">Watch</a><a href="#Options" class="nav-item nav-variable">Options</a><a href="#EventCoalescer" class="nav-item nav-variable">EventCoalescer</a><a href="#CoalescingConfig" class="nav-item nav-variable">CoalescingConfig</a><a href="#RingBuffer" class="nav-item nav-variable">RingBuffer</a><a href="#BufferPool" class="nav-item nav-variable">BufferPool</a><a href="#ZeroCopyIO" class="nav-item nav-variable">ZeroCopyIO</a><a href="#EventPriorityQueue" class="nav-item nav-variable">EventPriorityQueue</a><a href="#Priority" class="nav-item nav-variable">Priority</a><a href="#PtyManager" class="nav-item nav-variable">PtyManager</a><a href="#PtyConfig" class="nav-item nav-variable">PtyConfig</a><a href="#SignalHandler" class="nav-item nav-variable">SignalHandler</a><a href="#ChildMonitor" class="nav-item nav-variable">ChildMonitor</a><a href="#Profiler" class="nav-item nav-variable">Profiler</a><a href="#Metrics" class="nav-item nav-variable">Metrics</a><a href="#BackendDetector" class="nav-item nav-variable">BackendDetector</a><a href="#PlatformCapabilities" class="nav-item nav-variable">PlatformCapabilities</a><a href="#AsyncRuntime" class="nav-item nav-variable">AsyncRuntime</a><a href="#AsyncOperation" class="nav-item nav-variable">AsyncOperation</a><a href="#AdvancedTimer" class="nav-item nav-variable">AdvancedTimer</a><a href="#TimerStats" class="nav-item nav-variable">TimerStats</a><a href="#HighResTimer" class="nav-item nav-variable">HighResTimer</a><a href="#EventTracer" class="nav-item nav-variable">EventTracer</a><a href="#PerformanceMonitor" class="nav-item nav-variable">PerformanceMonitor</a><a href="#ThreadSafeQueue" class="nav-item nav-variable">ThreadSafeQueue</a><a href="#SharedPointer" class="nav-item nav-variable">SharedPointer</a><a href="#ThreadSafeEventLoop" class="nav-item nav-variable">ThreadSafeEventLoop</a><a href="#FileWatcher" class="nav-item nav-variable">FileWatcher</a><a href="#WatchConfig" class="nav-item nav-variable">WatchConfig</a><a href="#FileEvent" class="nav-item nav-variable">FileEvent</a><a href="#NetworkManager" class="nav-item nav-variable">NetworkManager</a><a href="#ConnectionPool" class="nav-item nav-variable">ConnectionPool</a><a href="#BandwidthMonitor" class="nav-item nav-variable">BandwidthMonitor</a></div>
+</div>
+<div class="content">
+<h1>API Documentation for src/api.zig</h1><h2>Structs</h2>
+<div class="declaration struct" id="Version">
+<span class="name">Version</span> <span class="kind">Structs</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L8" class="source-link" target="_blank">🔗 api.zig:8</a></div>
+<div class="declaration struct" id="Features">
+<span class="name">Features</span> <span class="kind">Structs</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L50" class="source-link" target="_blank">🔗 api.zig:50</a></div>
+<div class="declaration struct" id="ConfigBuilder">
+<span class="name">ConfigBuilder</span> <span class="kind">Structs</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L169" class="source-link" target="_blank">🔗 api.zig:169</a></div>
+<div class="declaration struct" id="Application">
+<span class="name">Application</span> <span class="kind">Structs</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L232" class="source-link" target="_blank">🔗 api.zig:232</a></div>
+<div class="declaration struct" id="convenience">
+<span class="name">convenience</span> <span class="kind">Structs</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L357" class="source-link" target="_blank">🔗 api.zig:357</a></div>
+<div class="declaration struct" id="docs">
+<span class="name">docs</span> <span class="kind">Structs</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L403" class="source-link" target="_blank">🔗 api.zig:403</a></div>
+<h2>Enums</h2>
+<div class="declaration enum" id="ApiLevel">
+<span class="name">ApiLevel</span> <span class="kind">Enums</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L28" class="source-link" target="_blank">🔗 api.zig:28</a></div>
+<h2>Error Sets</h2>
+<div class="declaration error-set" id="ZigZagError">
+<span class="name">ZigZagError</span> <span class="kind">Error Sets</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L332" class="source-link" target="_blank">🔗 api.zig:332</a></div>
+<h2>Variables</h2>
+<div class="declaration variable" id="std">
+<span class="name">std</span> <span class="kind">Variables</span><br><div class="doc-comment"><p>ZigZag stable API design and version compatibility</p>
+<p>Provides stable public interfaces and backward compatibility</p>
+</div><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L4" class="source-link" target="_blank">🔗 api.zig:4</a></div>
+<div class="declaration variable" id="builtin">
+<span class="name">builtin</span> <span class="kind">Variables</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L5" class="source-link" target="_blank">🔗 api.zig:5</a></div>
+<div class="declaration variable" id="EventLoop">
+<span class="name">EventLoop</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L113" class="source-link" target="_blank">🔗 api.zig:113</a></div>
+<div class="declaration variable" id="Event">
+<span class="name">Event</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L114" class="source-link" target="_blank">🔗 api.zig:114</a></div>
+<div class="declaration variable" id="EventType">
+<span class="name">EventType</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L115" class="source-link" target="_blank">🔗 api.zig:115</a></div>
+<div class="declaration variable" id="EventMask">
+<span class="name">EventMask</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L116" class="source-link" target="_blank">🔗 api.zig:116</a></div>
+<div class="declaration variable" id="Backend">
+<span class="name">Backend</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L117" class="source-link" target="_blank">🔗 api.zig:117</a></div>
+<div class="declaration variable" id="Timer">
+<span class="name">Timer</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L118" class="source-link" target="_blank">🔗 api.zig:118</a></div>
+<div class="declaration variable" id="TimerType">
+<span class="name">TimerType</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L119" class="source-link" target="_blank">🔗 api.zig:119</a></div>
+<div class="declaration variable" id="Watch">
+<span class="name">Watch</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L120" class="source-link" target="_blank">🔗 api.zig:120</a></div>
+<div class="declaration variable" id="Options">
+<span class="name">Options</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L121" class="source-link" target="_blank">🔗 api.zig:121</a></div>
+<div class="declaration variable" id="EventCoalescer">
+<span class="name">EventCoalescer</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L124" class="source-link" target="_blank">🔗 api.zig:124</a></div>
+<div class="declaration variable" id="CoalescingConfig">
+<span class="name">CoalescingConfig</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L125" class="source-link" target="_blank">🔗 api.zig:125</a></div>
+<div class="declaration variable" id="RingBuffer">
+<span class="name">RingBuffer</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L127" class="source-link" target="_blank">🔗 api.zig:127</a></div>
+<div class="declaration variable" id="BufferPool">
+<span class="name">BufferPool</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L128" class="source-link" target="_blank">🔗 api.zig:128</a></div>
+<div class="declaration variable" id="ZeroCopyIO">
+<span class="name">ZeroCopyIO</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L129" class="source-link" target="_blank">🔗 api.zig:129</a></div>
+<div class="declaration variable" id="EventPriorityQueue">
+<span class="name">EventPriorityQueue</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L131" class="source-link" target="_blank">🔗 api.zig:131</a></div>
+<div class="declaration variable" id="Priority">
+<span class="name">Priority</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L132" class="source-link" target="_blank">🔗 api.zig:132</a></div>
+<div class="declaration variable" id="PtyManager">
+<span class="name">PtyManager</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L134" class="source-link" target="_blank">🔗 api.zig:134</a></div>
+<div class="declaration variable" id="PtyConfig">
+<span class="name">PtyConfig</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L135" class="source-link" target="_blank">🔗 api.zig:135</a></div>
+<div class="declaration variable" id="SignalHandler">
+<span class="name">SignalHandler</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L137" class="source-link" target="_blank">🔗 api.zig:137</a></div>
+<div class="declaration variable" id="ChildMonitor">
+<span class="name">ChildMonitor</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L138" class="source-link" target="_blank">🔗 api.zig:138</a></div>
+<div class="declaration variable" id="Profiler">
+<span class="name">Profiler</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L140" class="source-link" target="_blank">🔗 api.zig:140</a></div>
+<div class="declaration variable" id="Metrics">
+<span class="name">Metrics</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L141" class="source-link" target="_blank">🔗 api.zig:141</a></div>
+<div class="declaration variable" id="BackendDetector">
+<span class="name">BackendDetector</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L143" class="source-link" target="_blank">🔗 api.zig:143</a></div>
+<div class="declaration variable" id="PlatformCapabilities">
+<span class="name">PlatformCapabilities</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L144" class="source-link" target="_blank">🔗 api.zig:144</a></div>
+<div class="declaration variable" id="AsyncRuntime">
+<span class="name">AsyncRuntime</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L146" class="source-link" target="_blank">🔗 api.zig:146</a></div>
+<div class="declaration variable" id="AsyncOperation">
+<span class="name">AsyncOperation</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L147" class="source-link" target="_blank">🔗 api.zig:147</a></div>
+<div class="declaration variable" id="AdvancedTimer">
+<span class="name">AdvancedTimer</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L149" class="source-link" target="_blank">🔗 api.zig:149</a></div>
+<div class="declaration variable" id="TimerStats">
+<span class="name">TimerStats</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L150" class="source-link" target="_blank">🔗 api.zig:150</a></div>
+<div class="declaration variable" id="HighResTimer">
+<span class="name">HighResTimer</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L151" class="source-link" target="_blank">🔗 api.zig:151</a></div>
+<div class="declaration variable" id="EventTracer">
+<span class="name">EventTracer</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L153" class="source-link" target="_blank">🔗 api.zig:153</a></div>
+<div class="declaration variable" id="PerformanceMonitor">
+<span class="name">PerformanceMonitor</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L154" class="source-link" target="_blank">🔗 api.zig:154</a></div>
+<div class="declaration variable" id="ThreadSafeQueue">
+<span class="name">ThreadSafeQueue</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L156" class="source-link" target="_blank">🔗 api.zig:156</a></div>
+<div class="declaration variable" id="SharedPointer">
+<span class="name">SharedPointer</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L157" class="source-link" target="_blank">🔗 api.zig:157</a></div>
+<div class="declaration variable" id="ThreadSafeEventLoop">
+<span class="name">ThreadSafeEventLoop</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L158" class="source-link" target="_blank">🔗 api.zig:158</a></div>
+<div class="declaration variable" id="FileWatcher">
+<span class="name">FileWatcher</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L160" class="source-link" target="_blank">🔗 api.zig:160</a></div>
+<div class="declaration variable" id="WatchConfig">
+<span class="name">WatchConfig</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L161" class="source-link" target="_blank">🔗 api.zig:161</a></div>
+<div class="declaration variable" id="FileEvent">
+<span class="name">FileEvent</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L162" class="source-link" target="_blank">🔗 api.zig:162</a></div>
+<div class="declaration variable" id="NetworkManager">
+<span class="name">NetworkManager</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L164" class="source-link" target="_blank">🔗 api.zig:164</a></div>
+<div class="declaration variable" id="ConnectionPool">
+<span class="name">ConnectionPool</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L165" class="source-link" target="_blank">🔗 api.zig:165</a></div>
+<div class="declaration variable" id="BandwidthMonitor">
+<span class="name">BandwidthMonitor</span> <span class="kind">Variables</span><span class="badge badge-pub">pub</span><a href="https://github.com/ghostkellz/zigzag/blob/main/src/api.zig#L166" class="source-link" target="_blank">🔗 api.zig:166</a></div>
+</div>
+</div>
+<script>
+document.getElementById('search').addEventListener('input', function(e) {
+  const query = e.target.value.toLowerCase();
+  const navItems = document.querySelectorAll('.nav-item');
+  const declarations = document.querySelectorAll('.declaration');
+  const sections = document.querySelectorAll('.nav-section');
+
+  navItems.forEach(function(item) {
+    const text = item.textContent.toLowerCase();
+    item.style.display = text.includes(query) ? 'block' : 'none';
+  });
+
+  declarations.forEach(function(decl) {
+    const name = decl.querySelector('.name').textContent.toLowerCase();
+    decl.style.display = name.includes(query) ? 'block' : 'none';
+  });
+
+  sections.forEach(function(section) {
+    const visibleItems = section.querySelectorAll('.nav-item[style*="block"], .nav-item:not([style])');
+    section.style.display = (query === '' || visibleItems.length > 0) ? 'block' : 'none';
+  });
+});
+
+// Syntax highlighting for Zig code
+function highlightZig(code) {
+  const keywords = ['const', 'var', 'pub', 'fn', 'struct', 'enum', 'union', 'if', 'else', 'while', 'for', 'return', 'try', 'catch', 'defer', 'errdefer', 'switch', 'and', 'or', 'null', 'undefined', 'true', 'false', 'test', 'comptime', 'inline', 'export', 'extern', 'packed', 'align', 'volatile', 'allowzero', 'async', 'await', 'suspend', 'resume', 'cancel'];
+  const types = ['u8', 'u16', 'u32', 'u64', 'i8', 'i16', 'i32', 'i64', 'f32', 'f64', 'bool', 'usize', 'isize', 'c_short', 'c_ushort', 'c_int', 'c_uint', 'c_long', 'c_ulong', 'c_longlong', 'c_ulonglong', 'c_longdouble', 'c_void', 'void', 'noreturn', 'type', 'anyerror', 'anyframe', 'anytype'];
+
+  let result = code;
+
+  // Highlight strings
+  result = result.replace(/"([^"\\\\]|\\\\.)*"/g, '<span class="zig-string">$&</span>');
+  result = result.replace(/'([^'\\\\]|\\\\.)'/g, '<span class="zig-string">$&</span>');
+
+  // Highlight numbers
+  result = result.replace(/\\b\\d+(\\.\\d+)?\\b/g, '<span class="zig-number">$&</span>');
+
+  // Highlight comments
+  result = result.replace(/\\/\\/.*$/gm, '<span class="zig-comment">$&</span>');
+
+  // Highlight keywords
+  keywords.forEach(function(keyword) {
+    const regex = new RegExp('\\\\b' + keyword + '\\\\b', 'g');
+    result = result.replace(regex, '<span class="zig-keyword">' + keyword + '</span>');
+  });
+
+  // Highlight types
+  types.forEach(function(type) {
+    const regex = new RegExp('\\\\b' + type + '\\\\b', 'g');
+    result = result.replace(regex, '<span class="zig-type">' + type + '</span>');
+  });
+
+  return result;
+}
+
+// Apply syntax highlighting on page load
+document.addEventListener('DOMContentLoaded', function() {
+  const codeBlocks = document.querySelectorAll('code');
+  codeBlocks.forEach(function(block) {
+    if (block.textContent.includes('const') || block.textContent.includes('fn') || block.textContent.includes('pub')) {
+      block.innerHTML = highlightZig(block.textContent);
+    }
+  });
+});
+</script>
+</body>
+</html>

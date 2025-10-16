@@ -1,0 +1,356 @@
+{
+  "version": "1.0",
+  "entries": [
+    {
+      "name": "std",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 4,
+      "description": "ZigZag stable API design and version compatibility",
+      "keywords": ["std", "variable", "ZigZag", "stable", "API", "design", "and", "version", "compatibility"]
+    },
+    {
+      "name": "builtin",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 5,
+      "keywords": ["builtin", "variable"]
+    },
+    {
+      "name": "Version",
+      "type": "struct",
+      "file": "src/api.zig",
+      "line": 8,
+      "keywords": ["Version", "struct"]
+    },
+    {
+      "name": "ApiLevel",
+      "type": "enum",
+      "file": "src/api.zig",
+      "line": 28,
+      "keywords": ["ApiLevel", "enum"]
+    },
+    {
+      "name": "Features",
+      "type": "struct",
+      "file": "src/api.zig",
+      "line": 50,
+      "keywords": ["Features", "struct"]
+    },
+    {
+      "name": "EventLoop",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 113,
+      "keywords": ["EventLoop", "variable"]
+    },
+    {
+      "name": "Event",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 114,
+      "keywords": ["Event", "variable"]
+    },
+    {
+      "name": "EventType",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 115,
+      "keywords": ["EventType", "variable"]
+    },
+    {
+      "name": "EventMask",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 116,
+      "keywords": ["EventMask", "variable"]
+    },
+    {
+      "name": "Backend",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 117,
+      "keywords": ["Backend", "variable"]
+    },
+    {
+      "name": "Timer",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 118,
+      "keywords": ["Timer", "variable"]
+    },
+    {
+      "name": "TimerType",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 119,
+      "keywords": ["TimerType", "variable"]
+    },
+    {
+      "name": "Watch",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 120,
+      "keywords": ["Watch", "variable"]
+    },
+    {
+      "name": "Options",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 121,
+      "keywords": ["Options", "variable"]
+    },
+    {
+      "name": "EventCoalescer",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 124,
+      "keywords": ["EventCoalescer", "variable"]
+    },
+    {
+      "name": "CoalescingConfig",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 125,
+      "keywords": ["CoalescingConfig", "variable"]
+    },
+    {
+      "name": "RingBuffer",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 127,
+      "keywords": ["RingBuffer", "variable"]
+    },
+    {
+      "name": "BufferPool",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 128,
+      "keywords": ["BufferPool", "variable"]
+    },
+    {
+      "name": "ZeroCopyIO",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 129,
+      "keywords": ["ZeroCopyIO", "variable"]
+    },
+    {
+      "name": "EventPriorityQueue",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 131,
+      "keywords": ["EventPriorityQueue", "variable"]
+    },
+    {
+      "name": "Priority",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 132,
+      "keywords": ["Priority", "variable"]
+    },
+    {
+      "name": "PtyManager",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 134,
+      "keywords": ["PtyManager", "variable"]
+    },
+    {
+      "name": "PtyConfig",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 135,
+      "keywords": ["PtyConfig", "variable"]
+    },
+    {
+      "name": "SignalHandler",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 137,
+      "keywords": ["SignalHandler", "variable"]
+    },
+    {
+      "name": "ChildMonitor",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 138,
+      "keywords": ["ChildMonitor", "variable"]
+    },
+    {
+      "name": "Profiler",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 140,
+      "keywords": ["Profiler", "variable"]
+    },
+    {
+      "name": "Metrics",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 141,
+      "keywords": ["Metrics", "variable"]
+    },
+    {
+      "name": "BackendDetector",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 143,
+      "keywords": ["BackendDetector", "variable"]
+    },
+    {
+      "name": "PlatformCapabilities",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 144,
+      "keywords": ["PlatformCapabilities", "variable"]
+    },
+    {
+      "name": "AsyncRuntime",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 146,
+      "keywords": ["AsyncRuntime", "variable"]
+    },
+    {
+      "name": "AsyncOperation",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 147,
+      "keywords": ["AsyncOperation", "variable"]
+    },
+    {
+      "name": "AdvancedTimer",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 149,
+      "keywords": ["AdvancedTimer", "variable"]
+    },
+    {
+      "name": "TimerStats",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 150,
+      "keywords": ["TimerStats", "variable"]
+    },
+    {
+      "name": "HighResTimer",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 151,
+      "keywords": ["HighResTimer", "variable"]
+    },
+    {
+      "name": "EventTracer",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 153,
+      "keywords": ["EventTracer", "variable"]
+    },
+    {
+      "name": "PerformanceMonitor",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 154,
+      "keywords": ["PerformanceMonitor", "variable"]
+    },
+    {
+      "name": "ThreadSafeQueue",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 156,
+      "keywords": ["ThreadSafeQueue", "variable"]
+    },
+    {
+      "name": "SharedPointer",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 157,
+      "keywords": ["SharedPointer", "variable"]
+    },
+    {
+      "name": "ThreadSafeEventLoop",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 158,
+      "keywords": ["ThreadSafeEventLoop", "variable"]
+    },
+    {
+      "name": "FileWatcher",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 160,
+      "keywords": ["FileWatcher", "variable"]
+    },
+    {
+      "name": "WatchConfig",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 161,
+      "keywords": ["WatchConfig", "variable"]
+    },
+    {
+      "name": "FileEvent",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 162,
+      "keywords": ["FileEvent", "variable"]
+    },
+    {
+      "name": "NetworkManager",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 164,
+      "keywords": ["NetworkManager", "variable"]
+    },
+    {
+      "name": "ConnectionPool",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 165,
+      "keywords": ["ConnectionPool", "variable"]
+    },
+    {
+      "name": "BandwidthMonitor",
+      "type": "variable",
+      "file": "src/api.zig",
+      "line": 166,
+      "keywords": ["BandwidthMonitor", "variable"]
+    },
+    {
+      "name": "ConfigBuilder",
+      "type": "struct",
+      "file": "src/api.zig",
+      "line": 169,
+      "keywords": ["ConfigBuilder", "struct"]
+    },
+    {
+      "name": "Application",
+      "type": "struct",
+      "file": "src/api.zig",
+      "line": 232,
+      "keywords": ["Application", "struct"]
+    },
+    {
+      "name": "ZigZagError",
+      "type": "error",
+      "file": "src/api.zig",
+      "line": 332,
+      "keywords": ["ZigZagError", "error"]
+    },
+    {
+      "name": "convenience",
+      "type": "struct",
+      "file": "src/api.zig",
+      "line": 357,
+      "keywords": ["convenience", "struct"]
+    },
+    {
+      "name": "docs",
+      "type": "struct",
+      "file": "src/api.zig",
+      "line": 403,
+      "keywords": ["docs", "struct"]
+    }
+  ]
+}
