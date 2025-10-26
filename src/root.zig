@@ -16,6 +16,11 @@ const IOCPBackend = if (build_options.enable_iocp) @import("backend/iocp.zig").I
 const EventCoalescer = @import("event_coalescing.zig").EventCoalescer;
 const CoalescingConfig = @import("event_coalescing.zig").CoalescingConfig;
 
+// Escape sequence parser for terminal input
+pub const escape_parser = @import("escape_parser.zig");
+pub const EscapeParser = escape_parser.EscapeParser;
+pub const ParseResult = escape_parser.ParseResult;
+
 // zsync integration - conditionally compiled
 const zsync = if (build_options.enable_zsync) @import("zsync") else void;
 
