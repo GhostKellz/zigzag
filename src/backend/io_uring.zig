@@ -10,6 +10,10 @@ const EventMask = @import("../root.zig").EventMask;
 const Watch = @import("../root.zig").Watch;
 const Timer = @import("../root.zig").Timer;
 
+// Define IORING_TIMEOUT_MULTISHOT constant (added in Linux 6.1)
+// This constant may not be available in older versions of Zig's standard library
+const IORING_TIMEOUT_MULTISHOT: u32 = (1 << 6);
+
 /// io_uring backend implementation
 pub const IoUringBackend = struct {
     ring: std.os.linux.IoUring,
@@ -179,7 +183,7 @@ pub const IoUringBackend = struct {
         };
 
         // Use multishot flag for recurring behavior if available
-        sqe.prep_timeout(&ts, 0, std.os.linux.IORING_TIMEOUT_MULTISHOT);
+        sqe.prep_timeout(&ts, 0, IORING_TIMEOUT_MULTISHOT);
         sqe.user_data = timer_id;
 
         _ = try self.ring.submit();
