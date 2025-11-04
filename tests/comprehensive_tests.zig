@@ -120,8 +120,12 @@ test "Timer functionality" {
     try testing.expect(loop.timers.contains(timer.id));
 
     // Run event loop briefly
-    const start = std.time.milliTimestamp();
-    while (std.time.milliTimestamp() - start < 200) {
+    const ts_start = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+    const start = @as(i64, @intCast(ts_start.sec * 1000 + @divTrunc(ts_start.nsec, 1_000_000)));
+    while ((blk: {
+        const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
+    }) - start < 200) {
         _ = try loop.tick();
         if (timer_fired) break;
         std.time.sleep(10_000_000); // 10ms
@@ -217,8 +221,12 @@ test "Recurring timer" {
     }
 
     // Run for ~200ms, should fire multiple times
-    const start = std.time.milliTimestamp();
-    while (std.time.milliTimestamp() - start < 200) {
+    const ts_start_rec = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+    const start = @as(i64, @intCast(ts_start_rec.sec * 1000 + @divTrunc(ts_start_rec.nsec, 1_000_000)));
+    while ((blk: {
+        const ts_now_rec = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        break :blk @as(i64, @intCast(ts_now_rec.sec * 1000 + @divTrunc(ts_now_rec.nsec, 1_000_000)));
+    }) - start < 200) {
         _ = try loop.tick();
         std.time.sleep(10_000_000); // 10ms
     }
@@ -342,13 +350,16 @@ test "Performance - event loop overhead" {
     defer loop.deinit();
 
     const iterations = 1000;
-    const start = std.time.nanoTimestamp();
+    const ts_start = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+    const start = @as(i64, @intCast(ts_start.sec * 1_000_000_000 + ts_start.nsec));
 
     for (0..iterations) |_| {
         _ = try loop.tick();
     }
 
-    const elapsed = std.time.nanoTimestamp() - start;
+    const ts_end = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+    const end = @as(i64, @intCast(ts_end.sec * 1_000_000_000 + ts_end.nsec));
+    const elapsed = end - start;
     const avg_ns = @divTrunc(elapsed, iterations);
 
     // Average tick should be under 10 microseconds

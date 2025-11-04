@@ -91,7 +91,10 @@ pub const DebouncedFileWatcher = struct {
         const watch = EditorFileWatch{
             .path = path_copy,
             .last_modified = @intCast(stat.mtime),
-            .last_event_time = std.time.milliTimestamp(),
+            .last_event_time = blk: {
+                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
+            },
         };
 
         try self.watches.put(path_copy, watch);
@@ -100,7 +103,8 @@ pub const DebouncedFileWatcher = struct {
 
     /// Check for file changes
     pub fn pollChanges(self: *DebouncedFileWatcher) ![]const FileChangeEvent {
-        const now = std.time.milliTimestamp();
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         self.pending_events.clearRetainingCapacity();
 
         var iter = self.watches.iterator();

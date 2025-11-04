@@ -39,7 +39,10 @@ pub const UsagePatternAnalyzer = struct {
             .allocator = allocator,
             .event_samples = std.ArrayList(EventSample).init(allocator),
             .analysis_window_ms = window_ms,
-            .last_analysis = std.time.milliTimestamp(),
+            .last_analysis = blk: {
+                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
+            },
             .current_pattern = .unknown,
         };
     }
@@ -51,7 +54,10 @@ pub const UsagePatternAnalyzer = struct {
     /// Record an event for pattern analysis
     pub fn recordEvent(self: *UsagePatternAnalyzer, event_type: EventType, processing_time: u64, fd: i32, data_size: usize) !void {
         const sample = EventSample{
-            .timestamp = std.time.milliTimestamp(),
+            .timestamp = blk: {
+                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
+            },
             .event_type = event_type,
             .processing_time_ns = processing_time,
             .fd = fd,
@@ -209,7 +215,10 @@ pub const AutoOptimizer = struct {
             .allocator = allocator,
             .pattern_analyzer = UsagePatternAnalyzer.init(allocator, 30000), // 30 second window
             .current_config = OptimizationConfig{},
-            .last_optimization = std.time.milliTimestamp(),
+            .last_optimization = blk: {
+                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
+            },
             .optimization_interval_ms = 5000, // Re-optimize every 5 seconds
         };
     }
@@ -222,7 +231,8 @@ pub const AutoOptimizer = struct {
     pub fn recordEvent(self: *AutoOptimizer, event_type: EventType, processing_time: u64, fd: i32, data_size: usize) !bool {
         try self.pattern_analyzer.recordEvent(event_type, processing_time, fd, data_size);
 
-        const now = std.time.milliTimestamp();
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         if ((now - self.last_optimization) >= @as(i64, @intCast(self.optimization_interval_ms))) {
             const old_config = self.current_config;
             self.optimize();

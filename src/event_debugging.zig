@@ -363,7 +363,8 @@ pub const PerformanceMonitor = struct {
     ) !void {
         if (!self.enabled) return;
 
-        const now = std.time.milliTimestamp();
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         if (now - self.last_sample_time < self.sample_interval_ms) {
             return; // Too soon for next sample
         }
@@ -394,7 +395,8 @@ pub const PerformanceMonitor = struct {
     }
 
     fn checkAlerts(self: *PerformanceMonitor, sample: *const PerformanceSample) !void {
-        const now = std.time.milliTimestamp();
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
 
         // High processing time alert
         if (sample.avg_processing_time_ns > @as(f64, @floatFromInt(self.alert_thresholds.max_processing_time_ns))) {

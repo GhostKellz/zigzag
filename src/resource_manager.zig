@@ -98,7 +98,8 @@ pub const ResourceManager = struct {
         const id = self.next_id;
         self.next_id += 1;
 
-        const now = std.time.milliTimestamp();
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         const resource = Resource{
             .id = id,
             .type = resource_type,
@@ -136,7 +137,8 @@ pub const ResourceManager = struct {
     pub fn retainResource(self: *ResourceManager, id: ResourceId) !void {
         if (self.tracked_resources.getPtr(id)) |resource| {
             resource.ref_count += 1;
-            resource.last_accessed = std.time.milliTimestamp();
+            const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+            resource.last_accessed = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         } else {
             return error.ResourceNotFound;
         }
@@ -152,7 +154,8 @@ pub const ResourceManager = struct {
 
     /// Find and cleanup stale resources
     pub fn cleanupStaleResources(self: *ResourceManager, max_age_ms: i64) !u32 {
-        const now = std.time.milliTimestamp();
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         const cutoff = now - max_age_ms;
         var cleanup_count: u32 = 0;
 
@@ -269,7 +272,8 @@ const ResourcePool = struct {
         if (self.available.popOrNull()) |ptr| {
             if (self.allocated.getPtr(ptr)) |resource| {
                 resource.in_use = true;
-                resource.allocated_at = std.time.milliTimestamp();
+                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                resource.allocated_at = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
                 return ptr;
             }
         }
@@ -312,7 +316,10 @@ const LeakDetector = struct {
     pub fn trackAllocation(self: *LeakDetector, ptr: usize, size: usize, component: []const u8) !void {
         try self.allocation_map.put(ptr, AllocationTrace{
             .size = size,
-            .timestamp = std.time.milliTimestamp(),
+            .timestamp = blk: {
+                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
+            },
             .component = component,
         });
     }
@@ -322,7 +329,8 @@ const LeakDetector = struct {
     }
 
     pub fn scanForLeaks(self: *LeakDetector) ![]LeakInfo {
-        const now = std.time.milliTimestamp();
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         const cutoff = now - self.leak_threshold_ms;
 
         var leaks = std.ArrayList(LeakInfo).init(self.allocator);
@@ -372,7 +380,10 @@ pub const CleanupScheduler = struct {
             .allocator = allocator,
             .resource_manager = resource_manager,
             .cleanup_tasks = std.ArrayList(CleanupTask).init(allocator),
-            .last_cleanup = std.time.milliTimestamp(),
+            .last_cleanup = blk: {
+                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
+            },
             .cleanup_interval_ms = 30000, // 30 seconds
         };
     }
@@ -391,7 +402,8 @@ pub const CleanupScheduler = struct {
     }
 
     pub fn runCleanupCycle(self: *CleanupScheduler) !void {
-        const now = std.time.milliTimestamp();
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
 
         for (self.cleanup_tasks.items) |*task| {
             if ((now - task.last_run) >= task.interval_ms) {
@@ -406,7 +418,8 @@ pub const CleanupScheduler = struct {
     pub fn forceCleanup(self: *CleanupScheduler) !void {
         for (self.cleanup_tasks.items) |*task| {
             try task.task_fn(self.resource_manager);
-            task.last_run = std.time.milliTimestamp();
+            const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+            task.last_run = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         }
     }
 };

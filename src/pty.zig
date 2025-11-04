@@ -106,7 +106,10 @@ pub const PtyManager = struct {
                 .pid = pid,
                 .master_fd = master_fd,
                 .window_size = winsize,
-                .start_time = std.time.milliTimestamp(),
+                .start_time = blk: {
+                    const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
+                },
             };
 
             try self.processes.put(pid, process);

@@ -24,9 +24,11 @@ const BenchResult = struct {
 };
 
 fn benchmark(comptime name: []const u8, operations: u64, func: anytype) BenchResult {
-    const start = std.time.nanoTimestamp();
+    const ts_start = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+    const start = @as(i64, @intCast(ts_start.sec * 1_000_000_000 + ts_start.nsec));
     func();
-    const end = std.time.nanoTimestamp();
+    const ts_end = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+    const end = @as(i64, @intCast(ts_end.sec * 1_000_000_000 + ts_end.nsec));
 
     return BenchResult{
         .name = name,

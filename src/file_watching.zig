@@ -257,7 +257,10 @@ const InotifyBackend = struct {
             const notification = FileEventNotification{
                 .event_type = file_event_type,
                 .path = path,
-                .timestamp = std.time.milliTimestamp(),
+                .timestamp = blk: {
+                    const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
+                },
                 .cookie = event.cookie,
             };
 
@@ -362,7 +365,10 @@ const KqueueBackend = struct {
                     const notification = FileEventNotification{
                         .event_type = file_event_type,
                         .path = path,
-                        .timestamp = std.time.milliTimestamp(),
+                        .timestamp = blk: {
+                    const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
+                },
                     };
 
                     try events.append(notification);
@@ -506,7 +512,10 @@ const PollingBackend = struct {
                     const notification = FileEventNotification{
                         .event_type = event_type,
                         .path = watched_path.path,
-                        .timestamp = std.time.milliTimestamp(),
+                        .timestamp = blk: {
+                    const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
+                },
                     };
                     try events.append(notification);
                 }
@@ -516,7 +525,10 @@ const PollingBackend = struct {
                     const notification = FileEventNotification{
                         .event_type = .deleted,
                         .path = watched_path.path,
-                        .timestamp = std.time.milliTimestamp(),
+                        .timestamp = blk: {
+                    const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
+                },
                     };
                     try events.append(notification);
                 }

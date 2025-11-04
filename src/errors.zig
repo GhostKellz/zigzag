@@ -162,7 +162,10 @@ pub const ErrorRecovery = struct {
         const context = ErrorContext{
             .error_type = err,
             .message = message,
-            .timestamp = std.time.milliTimestamp(),
+            .timestamp = blk: {
+                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
+            },
             .source_location = @src(),
             .system_error = null,
         };

@@ -369,7 +369,9 @@ pub const EventLoop = struct {
 
                                 // For recurring timers, reschedule
                                 if (timer.interval) |interval| {
-                                    timer.deadline = std.time.milliTimestamp() + @as(i64, @intCast(interval));
+                                    const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                                    const now_ms = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
+                                    timer.deadline = now_ms + @as(i64, @intCast(interval));
                                     // Backend will handle rescheduling
                                 } else {
                                     // Remove one-shot timer
@@ -572,7 +574,8 @@ pub const EventLoop = struct {
         const timer_id = self.next_timer_id;
         self.next_timer_id += 1;
 
-        const now = std.time.milliTimestamp();
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         const deadline = now + @as(i64, @intCast(ms));
 
         const timer = Timer{
@@ -636,7 +639,8 @@ pub const EventLoop = struct {
         const timer_id = self.next_timer_id;
         self.next_timer_id += 1;
 
-        const now = std.time.milliTimestamp();
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         const deadline = now + @as(i64, @intCast(interval_ms));
 
         const timer = Timer{

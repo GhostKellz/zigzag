@@ -90,8 +90,14 @@ pub const TimerWheel = struct {
             .levels = levels,
             .timer_pool = timer_pool,
             .timer_map = timer_map,
-            .current_time = std.time.milliTimestamp(),
-            .last_tick = std.time.milliTimestamp(),
+            .current_time = blk: {
+                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
+            },
+            .last_tick = blk: {
+                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
+            },
         };
     }
 
@@ -221,7 +227,8 @@ pub const TimerWheel = struct {
 
     /// Process timers and advance the wheel
     pub fn tick(self: *TimerWheel) !std.ArrayList(Timer) {
-        const now = std.time.milliTimestamp();
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         const elapsed = now - self.last_tick;
 
         var expired_timers = std.ArrayList(Timer){

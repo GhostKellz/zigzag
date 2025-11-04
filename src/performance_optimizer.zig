@@ -164,7 +164,10 @@ pub const CriticalPathOptimizer = struct {
 
             try self.optimization_cache.put(optimization_hash, OptimizationRecord{
                 .optimization_type = optimization,
-                .applied_at = std.time.milliTimestamp(),
+                .applied_at = blk: {
+                    const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
+                },
                 .performance_gain = gain,
                 .validation_status = .pending,
             });
@@ -505,7 +508,8 @@ pub const SyscallMinimizer = struct {
         }
 
         pub fn shouldFlush(self: BatchingBuffer) bool {
-            const now = std.time.milliTimestamp();
+            const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+            const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
 
             // Flush if batch is full or timeout reached
             if (self.read_operations.items.len >= self.max_batch_size or

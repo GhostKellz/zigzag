@@ -58,7 +58,8 @@ pub const NetworkConnection = struct {
     user_data: ?*anyopaque,
 
     pub fn init(fd: os.fd_t, address: net.Address) NetworkConnection {
-        const now = std.time.milliTimestamp();
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         return NetworkConnection{
             .fd = fd,
             .address = address,
@@ -72,12 +73,14 @@ pub const NetworkConnection = struct {
     }
 
     pub fn isExpired(self: NetworkConnection, timeout_ms: i64) bool {
-        const now = std.time.milliTimestamp();
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         return (now - self.last_activity) > timeout_ms;
     }
 
     pub fn updateActivity(self: *NetworkConnection) void {
-        self.last_activity = std.time.milliTimestamp();
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        self.last_activity = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
     }
 
     pub fn addBytesSent(self: *NetworkConnection, bytes: u64) void {
@@ -187,7 +190,9 @@ pub const ConnectionPool = struct {
             error.WouldBlock => {
                 // Connection in progress
                 conn.state = .connecting;
-                try self.connecting_connections.put(fd, std.time.milliTimestamp());
+                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const now_ms = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
+                try self.connecting_connections.put(fd, now_ms);
 
                 // Register for write events to detect connection completion
                 try self.event_loop.addWatch(fd, .{ .write = true });
@@ -259,11 +264,12 @@ pub const ConnectionPool = struct {
         }
 
         // Check connecting connections for timeout
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         var connecting_iter = self.connecting_connections.iterator();
         while (connecting_iter.next()) |entry| {
             const fd = entry.key_ptr.*;
             const connect_time = entry.value_ptr.*;
-            const now = std.time.milliTimestamp();
 
             if ((now - connect_time) > self.config.connect_timeout_ms) {
                 try expired_fds.append(fd);
@@ -377,7 +383,8 @@ pub const BandwidthMonitor = struct {
     }
 
     pub fn recordTraffic(self: *BandwidthMonitor, bytes_in: u64, bytes_out: u64) !void {
-        const now = std.time.milliTimestamp();
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
 
         try self.samples.append(BandwidthSample{
             .timestamp = now,

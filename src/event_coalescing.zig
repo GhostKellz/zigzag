@@ -23,7 +23,7 @@ pub const EventCoalescer = struct {
     // Pending events by type
     resize_events: std.ArrayList(Event),
     io_events: std.AutoHashMap(i32, Event), // fd -> latest event
-    last_coalesce_time: i64,
+    coalesce_timer: std.time.Timer,
 
     pub fn init(allocator: std.mem.Allocator, config: CoalescingConfig) !EventCoalescer {
         var io_events = std.AutoHashMap(i32, Event).init(allocator);
@@ -37,7 +37,7 @@ pub const EventCoalescer = struct {
                 .capacity = 0,
             },
             .io_events = io_events,
-            .last_coalesce_time = std.time.milliTimestamp(),
+            .coalesce_timer = try std.time.Timer.start(),
         };
     }
 
@@ -69,11 +69,11 @@ pub const EventCoalescer = struct {
 
     /// Check if coalescing should flush
     pub fn shouldFlush(self: *EventCoalescer) bool {
-        const now = std.time.milliTimestamp();
-        const elapsed = now - self.last_coalesce_time;
+        const elapsed_ns = self.coalesce_timer.read();
+        const elapsed_ms = elapsed_ns / std.time.ns_per_ms;
 
         // Flush if max time exceeded
-        if (elapsed >= self.config.max_coalesce_time_ms) {
+        if (elapsed_ms >= self.config.max_coalesce_time_ms) {
             return true;
         }
 
@@ -108,7 +108,7 @@ pub const EventCoalescer = struct {
         // Clear buffers
         self.resize_events.clearRetainingCapacity();
         self.io_events.clearRetainingCapacity();
-        self.last_coalesce_time = std.time.milliTimestamp();
+        self.coalesce_timer.reset();
 
         return count;
     }

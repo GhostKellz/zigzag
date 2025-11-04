@@ -40,7 +40,10 @@ pub const Timer = struct {
                 :
                 : "rdx"
             ),
-            else => @intCast(std.time.nanoTimestamp()),
+            else => blk: {
+                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                break :blk @as(i64, @intCast(ts.sec * 1_000_000_000 + ts.nsec));
+            },
         };
     }
 };

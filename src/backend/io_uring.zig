@@ -151,18 +151,19 @@ pub const IoUringBackend = struct {
 
     /// Add a timer using io_uring timeout
     pub fn addTimer(self: *IoUringBackend, timer_id: u32, ms: u64) !void {
-        const now = std.time.nanoTimestamp();
-        const deadline_ns = now + (ms * std.time.ns_per_ms);
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const now = @as(i64, @intCast(ts.sec * 1_000_000_000 + ts.nsec));
+        const deadline_ns = now + @as(i64, @intCast(ms * std.time.ns_per_ms));
 
         // Prepare timeout SQE
         var sqe = self.ring.get_sqe() catch return error.SubmissionQueueFull;
 
         // Set up timeout operation
-        var ts: std.os.linux.kernel_timespec = .{
+        var timeout_ts: std.os.linux.kernel_timespec = .{
             .sec = @intCast(@divTrunc(deadline_ns, std.time.ns_per_s)),
             .nsec = @intCast(@mod(deadline_ns, std.time.ns_per_s)),
         };
-        sqe.prep_timeout(&ts, 0, 0);
+        sqe.prep_timeout(&timeout_ts, 0, 0);
 
         // Store user data to identify this as a timer
         sqe.user_data = timer_id;

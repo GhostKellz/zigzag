@@ -50,7 +50,10 @@ pub const HighResTimer = struct {
             .macos, .ios => blk: {
                 break :blk std.c.mach_absolute_time();
             },
-            else => @intCast(std.time.nanoTimestamp()),
+            else => blk: {
+                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                break :blk @as(i64, @intCast(ts.sec * 1_000_000_000 + ts.nsec));
+            },
         };
     }
 
@@ -179,17 +182,21 @@ pub const TimerContext = struct {
     stats: *TimerStats,
 
     pub fn init(timer_id: u32, user_data: ?*anyopaque, fire_time: i64, stats: *TimerStats) TimerContext {
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const now_ms = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         return TimerContext{
             .timer_id = timer_id,
             .user_data = user_data,
-            .creation_time = std.time.milliTimestamp(),
+            .creation_time = now_ms,
             .expected_fire_time = fire_time,
             .stats = stats,
         };
     }
 
     pub fn onFire(self: *TimerContext) void {
-        self.actual_fire_time = std.time.milliTimestamp();
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const now_ms = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
+        self.actual_fire_time = now_ms;
         self.fire_count += 1;
         self.stats.recordTimerFired(self.expected_fire_time, self.actual_fire_time);
     }
@@ -200,7 +207,9 @@ pub const TimerContext = struct {
     }
 
     pub fn getAge(self: *const TimerContext) i64 {
-        return std.time.milliTimestamp() - self.creation_time;
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const now_ms = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
+        return now_ms - self.creation_time;
     }
 };
 
@@ -354,7 +363,8 @@ pub const TimerRegistry = struct {
 
     /// Clean up expired one-shot timers
     pub fn cleanupExpired(self: *TimerRegistry) void {
-        const now = std.time.milliTimestamp();
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         var to_remove = std.ArrayList(u32).init(self.allocator);
         defer to_remove.deinit();
 
@@ -421,7 +431,8 @@ pub const TimerBenchmark = struct {
         var results = TimerStats{};
 
         for (0..iterations) |_| {
-            const start_time = std.time.milliTimestamp();
+            const ts_start = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+            const start_time = @as(i64, @intCast(ts_start.sec * 1000 + @divTrunc(ts_start.nsec, 1_000_000)));
             const target_time = start_time + @as(i64, @intCast(target_interval_ms));
 
             const timer = try registry.createTimer(
@@ -433,7 +444,8 @@ pub const TimerBenchmark = struct {
 
             // Simulate timer firing
             std.time.sleep(target_interval_ms * std.time.ns_per_ms);
-            const actual_time = std.time.milliTimestamp();
+            const ts_actual = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+            const actual_time = @as(i64, @intCast(ts_actual.sec * 1000 + @divTrunc(ts_actual.nsec, 1_000_000)));
 
             results.recordTimerFired(target_time, actual_time);
             try registry.cancelTimer(timer.base_timer.id);
@@ -460,8 +472,10 @@ pub const TimerBenchmark = struct {
         var total_time: u64 = 0;
 
         for (0..iterations) |_| {
+            const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+            const now_ms = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
             const timer = try registry.createTimer(
-                std.time.milliTimestamp(),
+                now_ms,
                 null,
                 .one_shot,
                 null,
@@ -511,8 +525,10 @@ test "Timer registry operations" {
     defer registry.deinit();
 
     // Create timer
+    const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+    const now_ms = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
     const timer = try registry.createTimer(
-        std.time.milliTimestamp() + 1000,
+        now_ms + 1000,
         null,
         .one_shot,
         null,

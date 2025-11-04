@@ -96,11 +96,13 @@ pub fn main() !void {
     std.log.info("========================\n", .{});
 
     // Run the event loop for a limited time (10 seconds for demo)
-    const start_time = std.time.milliTimestamp();
+    const ts_start = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+    const start_time = @as(i64, @intCast(ts_start.sec * 1000 + @divTrunc(ts_start.nsec, 1_000_000)));
     const max_runtime_ms = 10000; // 10 seconds
 
     while (!loop.should_stop) {
-        const now = std.time.milliTimestamp();
+        const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const now = @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
         if (now - start_time >= max_runtime_ms) {
             std.log.info("\nDemo time limit reached (10 seconds). Stopping...", .{});
             break;

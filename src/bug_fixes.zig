@@ -146,7 +146,10 @@ pub const BugTracker = struct {
 
     pub fn reportCrash(self: *BugTracker, error_type: []const u8, context: []const u8) !void {
         try self.crash_reports.append(CrashReport{
-            .timestamp = std.time.milliTimestamp(),
+            .timestamp = blk: {
+                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
+            },
             .error_type = error_type,
             .stack_trace = null,
             .context = context,
@@ -220,7 +223,10 @@ pub const MemoryLeakDetector = struct {
     pub fn trackAllocation(self: *MemoryLeakDetector, ptr: usize, size: usize, component: []const u8) !void {
         try self.tracked_allocations.put(ptr, AllocationInfo{
             .size = size,
-            .timestamp = std.time.milliTimestamp(),
+            .timestamp = blk: {
+                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
+            },
             .component = component,
         });
     }
@@ -230,7 +236,8 @@ pub const MemoryLeakDetector = struct {
     }
 
     pub fn detectLeaks(self: *MemoryLeakDetector, max_age_ms: i64) ![]LeakReport {
-        const now = std.time.milliTimestamp();
+        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         const cutoff = now - max_age_ms;
 
         var leaks = std.ArrayList(LeakReport).init(self.allocator);
