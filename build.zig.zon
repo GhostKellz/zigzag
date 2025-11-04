@@ -34,7 +34,7 @@
     .dependencies = .{
         .zsync = .{
             .url = "https://github.com/ghostkellz/zsync/archive/main.tar.gz",
-            .hash = "zsync-0.7.0-KAuhecoIIQDfUZkcDiBPgGKxt4kb5Mu3b91HMKxZ0BKd",
+            .hash = "zsync-0.7.1-KAuhef8qIQApcisOPygXIeE9pC8qzdQL2Jp96JbNQyRm",
         },
         .zdoc = .{
             .url = "https://github.com/ghostkellz/zdoc/archive/main.tar.gz",
@@ -42,7 +42,7 @@
         },
         .zlog = .{
             .url = "https://github.com/ghostkellz/zlog/archive/main.tar.gz",
-            .hash = "zlog-0.1.1-kS0sWOX2CABYF1yAeeeRt0H7G4kx29h8hhimJW37-tQa",
+            .hash = "zlog-0.1.2-kS0sWPD2CAAC0AEFacslajC4VOPVe9gInDl3nDKDsAJF",
         },
     },
     .paths = .{
