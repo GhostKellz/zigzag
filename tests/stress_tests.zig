@@ -11,14 +11,13 @@ test "EventLoop stress test - many file descriptors" {
     defer loop.deinit();
 
     const max_fds = 100; // Keep reasonable for CI
-    var pipes: [max_fds][2]std.posix.fd_t = undefined;
+    var pipes: [max_fds][2]i32 = undefined;
     var watches: [max_fds]*const zigzag.Watch = undefined;
 
     // Create many file descriptors and watch them
     for (pipes, 0..) |*pipe, i| {
-        const pipe_result = try std.posix.pipe();
-        pipe[0] = pipe_result[0];
-        pipe[1] = pipe_result[1];
+        const pipe_rc = std.os.linux.pipe(pipe);
+        if (pipe_rc != 0) return error.PipeCreationFailed;
 
         watches[i] = try loop.addFd(pipe[0], .{ .read = true });
     }
@@ -86,8 +85,9 @@ test "EventLoop stress test - high frequency polling" {
     defer loop.deinit();
 
     // Create a self-pipe for testing
-    const pipe_result = try std.posix.pipe();
-    const pipe_fds = pipe_result;
+    var pipe_fds: [2]i32 = undefined;
+    const pipe_rc = std.os.linux.pipe(&pipe_fds);
+    if (pipe_rc != 0) return error.PipeCreationFailed;
     defer std.posix.close(pipe_fds[0]);
     defer std.posix.close(pipe_fds[1]);
 
@@ -127,10 +127,12 @@ test "EventLoop stress test - mixed operations under load" {
     }.timerCallback;
 
     // Create some pipes
-    const pipe_result1 = try std.posix.pipe();
-    const pipe_result2 = try std.posix.pipe();
-    const pipe_fds1 = pipe_result1;
-    const pipe_fds2 = pipe_result2;
+    var pipe_fds1: [2]i32 = undefined;
+    var pipe_fds2: [2]i32 = undefined;
+    const pipe_rc1 = std.os.linux.pipe(&pipe_fds1);
+    if (pipe_rc1 != 0) return error.PipeCreationFailed;
+    const pipe_rc2 = std.os.linux.pipe(&pipe_fds2);
+    if (pipe_rc2 != 0) return error.PipeCreationFailed;
 
     defer std.posix.close(pipe_fds1[0]);
     defer std.posix.close(pipe_fds1[1]);

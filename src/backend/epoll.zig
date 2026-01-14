@@ -24,7 +24,11 @@ pub const EpollBackend = struct {
 
     /// Initialize the epoll backend
     pub fn init(allocator: std.mem.Allocator) !EpollBackend {
-        const epoll_fd = try posix.epoll_create1(0);
+        const rc = std.os.linux.epoll_create1(0);
+        const epoll_fd: i32 = if (rc > std.math.maxInt(i32))
+            return std.posix.unexpectedErrno(@enumFromInt(rc))
+        else
+            @intCast(rc);
         errdefer posix.close(epoll_fd);
 
         var timer_fds = std.AutoHashMap(u32, i32).init(allocator);
@@ -75,7 +79,8 @@ pub const EpollBackend = struct {
             .data = .{ .fd = fd },
         };
 
-        try std.posix.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_ADD, fd, &event);
+        const rc = std.os.linux.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_ADD, fd, &event);
+        if (rc != 0) return std.posix.unexpectedErrno(@enumFromInt(rc));
     }
 
     /// Modify file descriptor in epoll
@@ -85,7 +90,8 @@ pub const EpollBackend = struct {
             .data = .{ .fd = fd },
         };
 
-        try std.posix.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_MOD, fd, &event);
+        const rc = std.os.linux.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_MOD, fd, &event);
+        if (rc != 0) return std.posix.unexpectedErrno(@enumFromInt(rc));
     }
 
     /// Remove file descriptor from epoll
@@ -103,7 +109,11 @@ pub const EpollBackend = struct {
         var epoll_events: [1024]EpollEvent = undefined;
 
         const timeout = if (timeout_ms) |ms| @as(i32, @intCast(ms)) else -1;
-        const num_events = posix.epoll_wait(self.epoll_fd, &epoll_events, timeout);
+        const rc = std.os.linux.epoll_wait(self.epoll_fd, &epoll_events, 1024, timeout);
+        const num_events: usize = if (rc > std.math.maxInt(i32))
+            return std.posix.unexpectedErrno(@enumFromInt(rc))
+        else
+            rc;
 
         for (0..@intCast(num_events)) |i| {
             const epoll_event = epoll_events[i];
@@ -182,9 +192,8 @@ pub const EpollBackend = struct {
             .events = std.os.linux.EPOLL.IN,
             .data = .{ .fd = timer_fd },
         };
-        std.posix.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_ADD, timer_fd, &event) catch |err| {
-            return err;
-        };
+        const rc = std.os.linux.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_ADD, timer_fd, &event);
+        if (rc != 0) return std.posix.unexpectedErrno(@enumFromInt(rc));
 
         // Store mapping
         try self.timer_fds.put(timer_id, timer_fd);
@@ -215,7 +224,8 @@ pub const EpollBackend = struct {
             .events = std.os.linux.EPOLL.IN,
             .data = .{ .fd = timer_fd },
         };
-        try std.posix.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_ADD, timer_fd, &event);
+        const rc = std.os.linux.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_ADD, timer_fd, &event);
+        if (rc != 0) return std.posix.unexpectedErrno(@enumFromInt(rc));
 
         // Store mapping
         try self.timer_fds.put(timer_id, timer_fd);
@@ -225,7 +235,7 @@ pub const EpollBackend = struct {
     pub fn cancelTimer(self: *EpollBackend, timer_id: u32) !void {
         if (self.timer_fds.get(timer_id)) |timer_fd| {
             // Remove from epoll
-            std.posix.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_DEL, timer_fd, null) catch {};
+            _ = std.os.linux.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_DEL, timer_fd, null);
 
             // Close timerfd
             posix.close(timer_fd);

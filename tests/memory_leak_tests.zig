@@ -21,8 +21,9 @@ test "EventLoop memory leak test - file descriptor watching" {
     defer loop.deinit();
 
     // Create pipes for testing
-    const pipe_result = try std.posix.pipe();
-    const pipe_fds = pipe_result;
+    var pipe_fds: [2]i32 = undefined;
+    const pipe_rc = std.os.linux.pipe(&pipe_fds);
+    if (pipe_rc != 0) return error.PipeCreationFailed;
     defer std.posix.close(pipe_fds[0]);
     defer std.posix.close(pipe_fds[1]);
 
@@ -88,11 +89,10 @@ test "EventLoop memory leak test - stress test with many operations" {
     }.timerCallback;
 
     // Create multiple pipes
-    var pipes: [10][2]std.posix.fd_t = undefined;
+    var pipes: [10][2]i32 = undefined;
     for (pipes, 0..) |*pipe, i| {
-        const pipe_result = try std.posix.pipe();
-        pipe[0] = pipe_result[0];
-        pipe[1] = pipe_result[1];
+        const pipe_rc = std.os.linux.pipe(pipe);
+        if (pipe_rc != 0) return error.PipeCreationFailed;
 
         // Add watches
         const watch = try loop.addFd(pipe[0], .{ .read = true });

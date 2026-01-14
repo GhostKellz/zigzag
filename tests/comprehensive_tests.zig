@@ -63,7 +63,9 @@ test "File descriptor watching" {
     defer loop.deinit();
 
     // Create pipe for testing
-    const pipe = try std.posix.pipe();
+    var pipe: [2]i32 = undefined;
+    const rc = std.os.linux.pipe(&pipe);
+    if (rc != 0) return error.PipeCreationFailed;
     defer std.posix.close(pipe[0]);
     defer std.posix.close(pipe[1]);
 
@@ -170,11 +172,15 @@ test "Multiple file descriptors" {
     defer loop.deinit();
 
     // Create multiple pipes
-    const pipe1 = try std.posix.pipe();
+    var pipe1: [2]i32 = undefined;
+    const rc1 = std.os.linux.pipe(&pipe1);
+    if (rc1 != 0) return error.PipeCreationFailed;
     defer std.posix.close(pipe1[0]);
     defer std.posix.close(pipe1[1]);
 
-    const pipe2 = try std.posix.pipe();
+    var pipe2: [2]i32 = undefined;
+    const rc2 = std.os.linux.pipe(&pipe2);
+    if (rc2 != 0) return error.PipeCreationFailed;
     defer std.posix.close(pipe2[0]);
     defer std.posix.close(pipe2[1]);
 
@@ -246,7 +252,9 @@ test "Watch callback mechanism" {
     var loop = try zigzag.EventLoop.init(allocator, .{});
     defer loop.deinit();
 
-    const pipe = try std.posix.pipe();
+    var pipe: [2]i32 = undefined;
+    const rc = std.os.linux.pipe(&pipe);
+    if (rc != 0) return error.PipeCreationFailed;
     defer std.posix.close(pipe[0]);
     defer std.posix.close(pipe[1]);
 
@@ -284,7 +292,9 @@ test "Memory leak detection" {
         var loop = try zigzag.EventLoop.init(allocator, .{});
 
         // Add some watches and timers
-        const pipe = try std.posix.pipe();
+        var pipe: [2]i32 = undefined;
+        const pipe_rc = std.os.linux.pipe(&pipe);
+        if (pipe_rc != 0) return error.PipeCreationFailed;
         const watch = try loop.addFd(pipe[0], .{ .read = true });
 
         const callback = struct {
@@ -309,12 +319,13 @@ test "Stress test - many file descriptors" {
     defer loop.deinit();
 
     const num_pipes = 10;
-    var pipes: [num_pipes][2]std.posix.fd_t = undefined;
+    var pipes: [num_pipes][2]i32 = undefined;
     var watches: [num_pipes]*const zigzag.Watch = undefined;
 
     // Create multiple pipes and watch them
     for (0..num_pipes) |i| {
-        pipes[i] = try std.posix.pipe();
+        const pipe_rc = std.os.linux.pipe(&pipes[i]);
+        if (pipe_rc != 0) return error.PipeCreationFailed;
         watches[i] = try loop.addFd(pipes[i][0], .{ .read = true });
     }
 

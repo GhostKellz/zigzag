@@ -56,7 +56,9 @@ const MockEventLoop = struct {
     }
 
     fn addFd(self: *MockEventLoop) !void {
-        const pipe_result = try std.posix.pipe();
+        var pipe_result: [2]i32 = undefined;
+        const rc = std.os.linux.pipe(&pipe_result);
+        if (rc != 0) return error.PipeCreationFailed;
         try self.pipes.append(pipe_result);
     }
 
@@ -96,13 +98,12 @@ test "Benchmark - File descriptor operations" {
     // Benchmark adding file descriptors
     const add_result = benchmark("Add FDs", 1000, struct {
         fn run() void {
-            var pipes: [1000][2]std.posix.fd_t = undefined;
+            var pipes: [1000][2]i32 = undefined;
             var watches: [1000]*const zigzag.Watch = undefined;
 
-            for (pipes, 0..) |*pipe, i| {
-                const pipe_result = std.posix.pipe() catch return;
-                pipe[0] = pipe_result[0];
-                pipe[1] = pipe_result[1];
+            for (&pipes, 0..) |pipe, i| {
+                const pipe_rc = std.os.linux.pipe(pipe);
+                if (pipe_rc != 0) return;
 
                 watches[i] = loop.addFd(pipe[0], .{ .read = true }) catch return;
             }
@@ -165,8 +166,9 @@ test "Benchmark - Polling performance" {
     defer loop.deinit();
 
     // Setup some file descriptors
-    const pipe_result = try std.posix.pipe();
-    const pipe_fds = pipe_result;
+    var pipe_fds: [2]i32 = undefined;
+    const pipe_rc = std.os.linux.pipe(&pipe_fds);
+    if (pipe_rc != 0) return error.PipeCreationFailed;
     defer std.posix.close(pipe_fds[0]);
     defer std.posix.close(pipe_fds[1]);
 
@@ -198,8 +200,9 @@ test "Benchmark - zigzag vs mock comparison" {
         fn run() void {
             for (0..1000) |_| {
                 var loop = zigzag.EventLoop.init(gpa, .{}) catch return;
-                const pipe_result = std.posix.pipe() catch return;
-                const pipe_fds = pipe_result;
+                var pipe_fds: [2]i32 = undefined;
+                const pipe_rc = std.os.linux.pipe(&pipe_fds);
+                if (pipe_rc != 0) return;
                 _ = loop.addFd(pipe_fds[0], .{ .read = true }) catch return;
                 std.posix.close(pipe_fds[0]);
                 std.posix.close(pipe_fds[1]);

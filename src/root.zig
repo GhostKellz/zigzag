@@ -765,8 +765,9 @@ test "File descriptor watching" {
     defer loop.deinit();
 
     // Create a pipe for testing
-    const pipe_result = try std.posix.pipe();
-    const pipe_fds = pipe_result;
+    var pipe_fds: [2]i32 = undefined;
+    const rc = std.os.linux.pipe(&pipe_fds);
+    if (rc != 0) return error.PipeCreationFailed;
 
     // Add read watch
     const watch = try loop.addFd(pipe_fds[0], .{ .read = true });
