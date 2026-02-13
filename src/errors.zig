@@ -2,6 +2,7 @@
 //! Comprehensive error types and recovery mechanisms
 
 const std = @import("std");
+const time_utils = @import("time_utils.zig");
 
 /// Core event loop errors
 pub const EventLoopError = error{
@@ -163,7 +164,7 @@ pub const ErrorRecovery = struct {
             .error_type = err,
             .message = message,
             .timestamp = blk: {
-                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts = time_utils.getMonotonicTime();
                 break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
             },
             .source_location = @src(),

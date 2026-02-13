@@ -7,6 +7,11 @@ const EventLoop = @import("root.zig").EventLoop;
 const Event = @import("root.zig").Event;
 const EventType = @import("root.zig").EventType;
 
+/// Get the debug Io context for synchronization
+fn getDebugIo() std.Io {
+    return std.Options.debug_io;
+}
+
 /// Thread-safe event queue using lock-free techniques where possible
 pub const ThreadSafeEventQueue = struct {
     allocator: std.mem.Allocator,
@@ -14,7 +19,7 @@ pub const ThreadSafeEventQueue = struct {
     capacity: usize,
     head: std.atomic.Value(usize),
     tail: std.atomic.Value(usize),
-    mutex: std.Thread.Mutex = .{},
+    mutex: std.Io.Mutex = .init,
 
     pub fn init(allocator: std.mem.Allocator, capacity: usize) !ThreadSafeEventQueue {
         // Ensure capacity is power of 2 for efficient modulo
@@ -75,8 +80,9 @@ pub const ThreadSafeEventQueue = struct {
 
     /// Push with blocking (uses mutex for simplicity)
     pub fn push(self: *ThreadSafeEventQueue, event: Event) !void {
-        self.mutex.lock();
-        defer self.mutex.unlock();
+        const io = getDebugIo();
+        self.mutex.lockUncancelable(io);
+        defer self.mutex.unlock(io);
 
         // Spin until we can push
         while (!self.tryPush(event)) {
@@ -367,7 +373,6 @@ pub const ThreadSafeUtils = struct {
         total_events: Counter,
         processing_time_ns: std.atomic.Value(u64),
         max_processing_time_ns: std.atomic.Value(u64),
-        mutex: std.Thread.Mutex = .{},
 
         pub fn init() StatsCollector {
             return StatsCollector{

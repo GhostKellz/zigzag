@@ -37,14 +37,20 @@ const NoOpLogger = struct {
 
 /// Global logger instance (optional)
 var global_logger: ?Logger = null;
-var global_logger_mutex: std.Thread.Mutex = .{};
+var global_logger_mutex: std.Io.Mutex = .init;
+
+/// Get the debug Io context for synchronization
+fn getDebugIo() std.Io {
+    return std.Options.debug_io;
+}
 
 /// Initialize the global logger
 pub fn initGlobalLogger(allocator: std.mem.Allocator) !void {
     if (!build_options.enable_zlog) return;
 
-    global_logger_mutex.lock();
-    defer global_logger_mutex.unlock();
+    const io = getDebugIo();
+    global_logger_mutex.lockUncancelable(io);
+    defer global_logger_mutex.unlock(io);
 
     if (global_logger != null) return error.AlreadyInitialized;
 
@@ -61,8 +67,9 @@ pub fn initGlobalLogger(allocator: std.mem.Allocator) !void {
 pub fn deinitGlobalLogger() void {
     if (!build_options.enable_zlog) return;
 
-    global_logger_mutex.lock();
-    defer global_logger_mutex.unlock();
+    const io = getDebugIo();
+    global_logger_mutex.lockUncancelable(io);
+    defer global_logger_mutex.unlock(io);
 
     if (global_logger) |*logger| {
         logger.deinit();
@@ -72,8 +79,9 @@ pub fn deinitGlobalLogger() void {
 
 /// Get the global logger
 fn getGlobalLogger() ?*Logger {
-    global_logger_mutex.lock();
-    defer global_logger_mutex.unlock();
+    const io = getDebugIo();
+    global_logger_mutex.lockUncancelable(io);
+    defer global_logger_mutex.unlock(io);
 
     if (global_logger) |*logger| {
         return logger;

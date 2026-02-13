@@ -4,6 +4,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const time = std.time;
+const time_utils = @import("time_utils.zig");
 
 const EventLoop = @import("root.zig").EventLoop;
 const Event = @import("root.zig").Event;
@@ -267,7 +268,7 @@ pub fn benchmarkThroughput(allocator: std.mem.Allocator, backend: Backend) !Benc
 
         // Simulate some work
         if (total_events % batch_size == 0) {
-            std.time.sleep(100); // 100ns work simulation
+            time_utils.sleep(100); // 100ns work simulation
         }
     }
 

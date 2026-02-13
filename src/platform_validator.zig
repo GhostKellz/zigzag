@@ -6,6 +6,7 @@ const builtin = @import("builtin");
 const EventLoop = @import("root.zig").EventLoop;
 const Event = @import("root.zig").Event;
 const Backend = @import("root.zig").Backend;
+const time_utils = @import("time_utils.zig");
 
 /// Comprehensive platform validator
 pub const PlatformValidator = struct {
@@ -224,7 +225,7 @@ pub const PlatformValidator = struct {
     }
 
     fn testBasicFunctionality(self: *PlatformValidator, backend: Backend) !TestResult {
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts = time_utils.getMonotonicTime();
         const start_time = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
 
         var event_loop = EventLoop.init(self.allocator, .{ .backend = backend }) catch |err| {
@@ -237,7 +238,7 @@ pub const PlatformValidator = struct {
                     else => .failed,
                 },
                 .execution_time_ms = @intCast((blk: {
-                    const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    const ts_now = time_utils.getMonotonicTime();
                     break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
                 }) - start_time),
                 .error_message = @errorName(err),
@@ -254,7 +255,7 @@ pub const PlatformValidator = struct {
                 .backend = backend,
                 .status = .failed,
                 .execution_time_ms = @intCast((blk: {
-                    const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    const ts_now = time_utils.getMonotonicTime();
                     break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
                 }) - start_time),
                 .error_message = @errorName(err),
@@ -271,7 +272,7 @@ pub const PlatformValidator = struct {
                 .backend = backend,
                 .status = .failed,
                 .execution_time_ms = @intCast((blk: {
-                    const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    const ts_now = time_utils.getMonotonicTime();
                     break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
                 }) - start_time),
                 .error_message = @errorName(err),
@@ -287,7 +288,7 @@ pub const PlatformValidator = struct {
                 .backend = backend,
                 .status = .failed,
                 .execution_time_ms = @intCast((blk: {
-                    const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    const ts_now = time_utils.getMonotonicTime();
                     break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
                 }) - start_time),
                 .error_message = @errorName(err),
@@ -300,14 +301,14 @@ pub const PlatformValidator = struct {
             .backend = backend,
             .status = .passed,
             .execution_time_ms = @intCast((blk: {
-                const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts_now = time_utils.getMonotonicTime();
                 break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
             }) - start_time),
         };
     }
 
     fn testPerformance(self: *PlatformValidator, backend: Backend) !TestResult {
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts = time_utils.getMonotonicTime();
         const start_time = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
 
         var event_loop = EventLoop.init(self.allocator, .{ .backend = backend }) catch |err| {
@@ -317,7 +318,7 @@ pub const PlatformValidator = struct {
                 .backend = backend,
                 .status = .failed,
                 .execution_time_ms = @intCast((blk: {
-                    const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    const ts_now = time_utils.getMonotonicTime();
                     break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
                 }) - start_time),
                 .error_message = @errorName(err),
@@ -339,7 +340,7 @@ pub const PlatformValidator = struct {
                 .backend = backend,
                 .status = .failed,
                 .execution_time_ms = @intCast((blk: {
-                    const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    const ts_now = time_utils.getMonotonicTime();
                     break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
                 }) - start_time),
                 .error_message = @errorName(err),
@@ -355,7 +356,7 @@ pub const PlatformValidator = struct {
                 .backend = backend,
                 .status = .failed,
                 .execution_time_ms = @intCast((blk: {
-                    const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    const ts_now = time_utils.getMonotonicTime();
                     break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
                 }) - start_time),
                 .error_message = @errorName(err),
@@ -363,10 +364,10 @@ pub const PlatformValidator = struct {
         };
 
         while ((blk: {
-            const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+            const ts_now = time_utils.getMonotonicTime();
             break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
         }) < test_end) {
-            const ts_event = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+            const ts_event = time_utils.getMonotonicTime();
             const event_start = @as(i64, @intCast(ts_event.sec * 1_000_000_000 + ts_event.nsec));
 
             // Trigger event
@@ -377,14 +378,14 @@ pub const PlatformValidator = struct {
             const num_events = event_loop.wait(&events, 1) catch break;
 
             if (num_events > 0) {
-                const ts_event_end = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts_event_end = time_utils.getMonotonicTime();
                 const event_end = @as(i64, @intCast(ts_event_end.sec * 1_000_000_000 + ts_event_end.nsec));
                 latency_sum += @intCast(event_end - event_start);
                 event_count += 1;
             }
         }
 
-        const ts_final = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts_final = time_utils.getMonotonicTime();
         const execution_time = @as(i64, @intCast(ts_final.sec * 1000 + @divTrunc(ts_final.nsec, 1_000_000))) - start_time;
         const events_per_second = if (execution_time > 0) (event_count * 1000) / @as(u64, @intCast(execution_time)) else 0;
         const avg_latency = if (event_count > 0) latency_sum / event_count else 0;
@@ -405,7 +406,7 @@ pub const PlatformValidator = struct {
     }
 
     fn testStress(self: *PlatformValidator, backend: Backend) !TestResult {
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts = time_utils.getMonotonicTime();
         const start_time = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
 
         var event_loop = EventLoop.init(self.allocator, .{ .backend = backend }) catch |err| {
@@ -415,7 +416,7 @@ pub const PlatformValidator = struct {
                 .backend = backend,
                 .status = .failed,
                 .execution_time_ms = @intCast((blk: {
-                    const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    const ts_now = time_utils.getMonotonicTime();
                     break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
                 }) - start_time),
                 .error_message = @errorName(err),
@@ -442,7 +443,7 @@ pub const PlatformValidator = struct {
                     .backend = backend,
                     .status = .failed,
                     .execution_time_ms = @intCast((blk: {
-                    const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    const ts_now = time_utils.getMonotonicTime();
                     break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
                 }) - start_time),
                     .error_message = @errorName(err),
@@ -462,7 +463,7 @@ pub const PlatformValidator = struct {
                     .backend = backend,
                     .status = .failed,
                     .execution_time_ms = @intCast((blk: {
-                    const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    const ts_now = time_utils.getMonotonicTime();
                     break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
                 }) - start_time),
                     .error_message = @errorName(err),
@@ -490,7 +491,7 @@ pub const PlatformValidator = struct {
                 .backend = backend,
                 .status = .failed,
                 .execution_time_ms = @intCast((blk: {
-                    const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    const ts_now = time_utils.getMonotonicTime();
                     break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
                 }) - start_time),
                 .error_message = @errorName(err),
@@ -503,14 +504,14 @@ pub const PlatformValidator = struct {
             .backend = backend,
             .status = .passed,
             .execution_time_ms = @intCast((blk: {
-                const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts_now = time_utils.getMonotonicTime();
                 break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
             }) - start_time),
         };
     }
 
     fn testErrorHandling(self: *PlatformValidator, backend: Backend) !TestResult {
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts = time_utils.getMonotonicTime();
         const start_time = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
 
         var event_loop = EventLoop.init(self.allocator, .{ .backend = backend }) catch |err| {
@@ -520,7 +521,7 @@ pub const PlatformValidator = struct {
                 .backend = backend,
                 .status = .failed,
                 .execution_time_ms = @intCast((blk: {
-                    const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    const ts_now = time_utils.getMonotonicTime();
                     break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
                 }) - start_time),
                 .error_message = @errorName(err),
@@ -538,7 +539,7 @@ pub const PlatformValidator = struct {
                 .backend = backend,
                 .status = .failed,
                 .execution_time_ms = @intCast((blk: {
-                    const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    const ts_now = time_utils.getMonotonicTime();
                     break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
                 }) - start_time),
                 .error_message = "Invalid fd should have been rejected",
@@ -553,7 +554,7 @@ pub const PlatformValidator = struct {
             .backend = backend,
             .status = .passed,
             .execution_time_ms = @intCast((blk: {
-                const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts_now = time_utils.getMonotonicTime();
                 break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
             }) - start_time),
         };

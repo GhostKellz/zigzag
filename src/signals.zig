@@ -7,6 +7,7 @@ const posix = std.posix;
 const c = std.c;
 const Event = @import("root.zig").Event;
 const EventType = @import("root.zig").EventType;
+const time_utils = @import("time_utils.zig");
 
 /// Signal event data
 pub const SignalEvent = struct {
@@ -278,7 +279,7 @@ pub const ChildMonitor = struct {
 
         const info = ChildInfo{
             .started = blk: {
-                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts = time_utils.getMonotonicTime();
                 break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
             },
             .command = owned_command,
@@ -297,13 +298,13 @@ pub const ChildMonitor = struct {
 
     /// Wait for all children to exit
     pub fn waitAll(self: *ChildMonitor, timeout_ms: ?u32) !void {
-        const ts_start = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts_start = time_utils.getMonotonicTime();
         const start_time = @as(i64, @intCast(ts_start.sec * 1000 + @divTrunc(ts_start.nsec, 1_000_000)));
 
         while (self.children.count() > 0) {
             // Check timeout
             if (timeout_ms) |timeout| {
-                const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts_now = time_utils.getMonotonicTime();
                 const now_ms = @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
                 const elapsed = now_ms - start_time;
                 if (elapsed >= timeout) {
@@ -319,7 +320,7 @@ pub const ChildMonitor = struct {
                 _ = self.handleChildExit(pid);
             } else if (pid == 0) {
                 // No child ready, wait a bit
-                std.time.sleep(10_000_000); // 10ms
+                time_utils.sleep(10_000_000); // 10ms
             } else {
                 // Error or no more children
                 break;
@@ -342,7 +343,7 @@ pub const FocusTracker = struct {
         const changed = self.has_focus != focused;
         if (changed) {
             self.has_focus = focused;
-            const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+            const ts = time_utils.getMonotonicTime();
             self.last_focus_change = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         }
         return changed;
@@ -355,7 +356,7 @@ pub const FocusTracker = struct {
 
     /// Get time since last focus change
     pub fn timeSinceLastChange(self: *const FocusTracker) i64 {
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts = time_utils.getMonotonicTime();
         const now_ms = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         return now_ms - self.last_focus_change;
     }

@@ -5,6 +5,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const posix = std.posix;
 const c = std.c;
+const time_utils = @import("time_utils.zig");
 
 /// PTY configuration
 pub const PtyConfig = struct {
@@ -107,7 +108,7 @@ pub const PtyManager = struct {
                 .master_fd = master_fd,
                 .window_size = winsize,
                 .start_time = blk: {
-                    const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    const ts = time_utils.getMonotonicTime();
                     break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
                 },
             };
@@ -180,7 +181,7 @@ pub const PtyManager = struct {
 
             if (force) {
                 // Give process time to clean up
-                std.time.sleep(100_000_000); // 100ms
+                time_utils.sleep(100_000_000); // 100ms
 
                 // Check if still running
                 if (try self.checkExit(pid) == null) {

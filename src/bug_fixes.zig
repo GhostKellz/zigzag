@@ -6,6 +6,7 @@ const builtin = @import("builtin");
 const EventLoop = @import("root.zig").EventLoop;
 const Event = @import("root.zig").Event;
 const EventType = @import("root.zig").EventType;
+const time_utils = @import("time_utils.zig");
 
 /// Critical bug tracker and automated fixes
 pub const BugTracker = struct {
@@ -147,7 +148,7 @@ pub const BugTracker = struct {
     pub fn reportCrash(self: *BugTracker, error_type: []const u8, context: []const u8) !void {
         try self.crash_reports.append(CrashReport{
             .timestamp = blk: {
-                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts = time_utils.getMonotonicTime();
                 break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
             },
             .error_type = error_type,
@@ -224,7 +225,7 @@ pub const MemoryLeakDetector = struct {
         try self.tracked_allocations.put(ptr, AllocationInfo{
             .size = size,
             .timestamp = blk: {
-                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts = time_utils.getMonotonicTime();
                 break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
             },
             .component = component,
@@ -236,7 +237,7 @@ pub const MemoryLeakDetector = struct {
     }
 
     pub fn detectLeaks(self: *MemoryLeakDetector, max_age_ms: i64) ![]LeakReport {
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts = time_utils.getMonotonicTime();
         const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         const cutoff = now - max_age_ms;
 

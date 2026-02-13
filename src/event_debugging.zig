@@ -7,6 +7,7 @@ const Event = @import("root.zig").Event;
 const EventType = @import("root.zig").EventType;
 const Backend = @import("root.zig").Backend;
 const HighResTimer = @import("advanced_timers.zig").HighResTimer;
+const time_utils = @import("time_utils.zig");
 
 /// Event trace entry for debugging
 pub const EventTrace = struct {
@@ -363,7 +364,7 @@ pub const PerformanceMonitor = struct {
     ) !void {
         if (!self.enabled) return;
 
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts = time_utils.getMonotonicTime();
         const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         if (now - self.last_sample_time < self.sample_interval_ms) {
             return; // Too soon for next sample
@@ -395,7 +396,7 @@ pub const PerformanceMonitor = struct {
     }
 
     fn checkAlerts(self: *PerformanceMonitor, sample: *const PerformanceSample) !void {
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts = time_utils.getMonotonicTime();
         const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
 
         // High processing time alert

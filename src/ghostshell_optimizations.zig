@@ -8,6 +8,7 @@ const EventLoop = @import("root.zig").EventLoop;
 const Event = @import("root.zig").Event;
 const EventMask = @import("root.zig").EventMask;
 const logging = @import("logging.zig");
+const time_utils = @import("time_utils.zig");
 
 /// Terminal frame timing for 60Hz+ rendering
 pub const TerminalTiming = struct {
@@ -53,7 +54,7 @@ pub const PTYEventBatcher = struct {
 
     /// Check if batch should be flushed
     pub fn shouldFlush(self: PTYEventBatcher) bool {
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts = time_utils.getMonotonicTime();
         const now = @as(i64, @intCast(ts.sec * 1_000_000_000 + ts.nsec));
         const time_since_flush = now - self.last_flush_ns;
 
@@ -63,7 +64,7 @@ pub const PTYEventBatcher = struct {
 
     /// Flush batch and return data
     pub fn flush(self: *PTYEventBatcher) []const u8 {
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts = time_utils.getMonotonicTime();
         self.last_flush_ns = @as(i64, @intCast(ts.sec * 1_000_000_000 + ts.nsec));
         return self.batch_buffer.items;
     }
@@ -151,7 +152,7 @@ pub const GhostshellExtensions = struct {
             .pty_batcher = try PTYEventBatcher.init(allocator),
             .render_pool = try RenderBufferPool.init(allocator),
             .last_stats_time = blk: {
-                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts = time_utils.getMonotonicTime();
                 break :blk @as(i64, @intCast(ts.sec * 1_000_000_000 + ts.nsec));
             },
         };
@@ -164,7 +165,7 @@ pub const GhostshellExtensions = struct {
 
     /// Optimized tick with terminal-specific batching
     pub fn tickOptimized(self: *GhostshellExtensions) !bool {
-        const ts_frame = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts_frame = time_utils.getMonotonicTime();
         const frame_start = @as(i64, @intCast(ts_frame.sec * 1_000_000_000 + ts_frame.nsec));
 
         // Process events with frame budget awareness
@@ -173,7 +174,7 @@ pub const GhostshellExtensions = struct {
         self.events_processed += 1;
 
         // Check frame budget
-        const ts_frame_end = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts_frame_end = time_utils.getMonotonicTime();
         const frame_end = @as(i64, @intCast(ts_frame_end.sec * 1_000_000_000 + ts_frame_end.nsec));
         const frame_elapsed = @as(u64, @intCast(frame_end - frame_start));
         if (!self.timing.isWithinBudget(frame_elapsed)) {
@@ -185,7 +186,7 @@ pub const GhostshellExtensions = struct {
 
     /// Get performance statistics
     pub fn getStats(self: *GhostshellExtensions) PerformanceStats {
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts = time_utils.getMonotonicTime();
         const now = @as(i64, @intCast(ts.sec * 1_000_000_000 + ts.nsec));
         const elapsed_s = @as(f64, @floatFromInt(now - self.last_stats_time)) / 1_000_000_000.0;
 
@@ -200,7 +201,7 @@ pub const GhostshellExtensions = struct {
     pub fn resetStats(self: *GhostshellExtensions) void {
         self.frames_rendered = 0;
         self.events_processed = 0;
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts = time_utils.getMonotonicTime();
         self.last_stats_time = @as(i64, @intCast(ts.sec * 1_000_000_000 + ts.nsec));
     }
 };

@@ -16,6 +16,9 @@ const IOCPBackend = if (build_options.enable_iocp) @import("backend/iocp.zig").I
 const EventCoalescer = @import("event_coalescing.zig").EventCoalescer;
 const CoalescingConfig = @import("event_coalescing.zig").CoalescingConfig;
 
+// Time utilities
+const time_utils = @import("time_utils.zig");
+
 // Escape sequence parser for terminal input
 pub const escape_parser = @import("escape_parser.zig");
 pub const EscapeParser = escape_parser.EscapeParser;
@@ -369,7 +372,7 @@ pub const EventLoop = struct {
 
                                 // For recurring timers, reschedule
                                 if (timer.interval) |interval| {
-                                    const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                                    const ts = time_utils.getMonotonicTime();
                                     const now_ms = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
                                     timer.deadline = now_ms + @as(i64, @intCast(interval));
                                     // Backend will handle rescheduling
@@ -400,7 +403,7 @@ pub const EventLoop = struct {
             if (!try self.tick()) {
                 // No events, but we can continue if not stopped
                 // Add a small delay to prevent busy-waiting
-                std.time.sleep(1_000_000); // 1ms
+                time_utils.sleep(1_000_000); // 1ms
             }
         }
     }
@@ -574,7 +577,7 @@ pub const EventLoop = struct {
         const timer_id = self.next_timer_id;
         self.next_timer_id += 1;
 
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts = time_utils.getMonotonicTime();
         const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         const deadline = now + @as(i64, @intCast(ms));
 
@@ -639,7 +642,7 @@ pub const EventLoop = struct {
         const timer_id = self.next_timer_id;
         self.next_timer_id += 1;
 
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts = time_utils.getMonotonicTime();
         const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         const deadline = now + @as(i64, @intCast(interval_ms));
 

@@ -7,6 +7,7 @@ const EventLoop = @import("root.zig").EventLoop;
 const Event = @import("root.zig").Event;
 const EventType = @import("root.zig").EventType;
 const Backend = @import("root.zig").Backend;
+const time_utils = @import("time_utils.zig");
 
 /// Comprehensive backend validator
 pub const BackendValidator = struct {
@@ -422,11 +423,11 @@ pub const BackendValidator = struct {
 
 // Test implementations
 fn testInitialization(validator: *BackendValidator, backend: Backend) !BackendValidator.TestCaseResult {
-    const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+    const ts = time_utils.getMonotonicTime();
     const start_time = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
 
     var event_loop = EventLoop.init(validator.allocator, .{ .backend = backend }) catch |err| {
-        const ts_end = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts_end = time_utils.getMonotonicTime();
         const end_time = @as(i64, @intCast(ts_end.sec * 1000 + @divTrunc(ts_end.nsec, 1_000_000)));
         return BackendValidator.TestCaseResult{
             .test_name = "initialization",
@@ -438,7 +439,7 @@ fn testInitialization(validator: *BackendValidator, backend: Backend) !BackendVa
     };
     defer event_loop.deinit();
 
-    const ts_end = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+    const ts_end = time_utils.getMonotonicTime();
     const end_time = @as(i64, @intCast(ts_end.sec * 1000 + @divTrunc(ts_end.nsec, 1_000_000)));
     return BackendValidator.TestCaseResult{
         .test_name = "initialization",
@@ -449,11 +450,11 @@ fn testInitialization(validator: *BackendValidator, backend: Backend) !BackendVa
 }
 
 fn testSingleFdWatch(validator: *BackendValidator, backend: Backend) !BackendValidator.TestCaseResult {
-    const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+    const ts = time_utils.getMonotonicTime();
     const start_time = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
 
     var event_loop = EventLoop.init(validator.allocator, .{ .backend = backend }) catch |err| {
-        const ts_end = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts_end = time_utils.getMonotonicTime();
         const now_ms = @as(i64, @intCast(ts_end.sec * 1000 + @divTrunc(ts_end.nsec, 1_000_000)));
         return BackendValidator.TestCaseResult{
             .test_name = "single_fd_watch",
@@ -467,7 +468,7 @@ fn testSingleFdWatch(validator: *BackendValidator, backend: Backend) !BackendVal
 
     var pipes: [2]std.os.fd_t = undefined;
     std.os.pipe(&pipes) catch |err| {
-        const ts_end = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts_end = time_utils.getMonotonicTime();
         const now_ms = @as(i64, @intCast(ts_end.sec * 1000 + @divTrunc(ts_end.nsec, 1_000_000)));
         return BackendValidator.TestCaseResult{
             .test_name = "single_fd_watch",
@@ -481,7 +482,7 @@ fn testSingleFdWatch(validator: *BackendValidator, backend: Backend) !BackendVal
     defer std.os.close(pipes[1]);
 
     event_loop.addWatch(pipes[0], .{ .read = true }) catch |err| {
-        const ts_end = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts_end = time_utils.getMonotonicTime();
         const now_ms = @as(i64, @intCast(ts_end.sec * 1000 + @divTrunc(ts_end.nsec, 1_000_000)));
         return BackendValidator.TestCaseResult{
             .test_name = "single_fd_watch",
@@ -494,7 +495,7 @@ fn testSingleFdWatch(validator: *BackendValidator, backend: Backend) !BackendVal
 
     // Write to pipe to trigger event
     _ = std.os.write(pipes[1], "test") catch |err| {
-        const ts_end = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts_end = time_utils.getMonotonicTime();
         const now_ms = @as(i64, @intCast(ts_end.sec * 1000 + @divTrunc(ts_end.nsec, 1_000_000)));
         return BackendValidator.TestCaseResult{
             .test_name = "single_fd_watch",
@@ -508,7 +509,7 @@ fn testSingleFdWatch(validator: *BackendValidator, backend: Backend) !BackendVal
     // Wait for event
     var events: [1]Event = undefined;
     const num_events = event_loop.wait(&events, 100) catch |err| {
-        const ts_end = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts_end = time_utils.getMonotonicTime();
         const now_ms = @as(i64, @intCast(ts_end.sec * 1000 + @divTrunc(ts_end.nsec, 1_000_000)));
         return BackendValidator.TestCaseResult{
             .test_name = "single_fd_watch",
@@ -520,7 +521,7 @@ fn testSingleFdWatch(validator: *BackendValidator, backend: Backend) !BackendVal
     };
 
     if (num_events == 0) {
-        const ts_end = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts_end = time_utils.getMonotonicTime();
         const now_ms = @as(i64, @intCast(ts_end.sec * 1000 + @divTrunc(ts_end.nsec, 1_000_000)));
         return BackendValidator.TestCaseResult{
             .test_name = "single_fd_watch",
@@ -531,7 +532,7 @@ fn testSingleFdWatch(validator: *BackendValidator, backend: Backend) !BackendVal
         };
     }
 
-    const ts_end = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+    const ts_end = time_utils.getMonotonicTime();
     const now_ms = @as(i64, @intCast(ts_end.sec * 1000 + @divTrunc(ts_end.nsec, 1_000_000)));
     return BackendValidator.TestCaseResult{
         .test_name = "single_fd_watch",
@@ -542,7 +543,7 @@ fn testSingleFdWatch(validator: *BackendValidator, backend: Backend) !BackendVal
 }
 
 fn testMultipleFdWatch(validator: *BackendValidator, backend: Backend) !BackendValidator.TestCaseResult {
-    const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+    const ts = time_utils.getMonotonicTime();
     const start_time = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
 
     var event_loop = EventLoop.init(validator.allocator, .{ .backend = backend }) catch |err| {
@@ -550,7 +551,7 @@ fn testMultipleFdWatch(validator: *BackendValidator, backend: Backend) !BackendV
             .test_name = "multiple_fd_watch",
             .status = .failed,
             .execution_time_ms = @intCast((blk: {
-                const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts_now = time_utils.getMonotonicTime();
                 break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
             }) - start_time),
             .memory_usage_kb = 0,
@@ -574,7 +575,7 @@ fn testMultipleFdWatch(validator: *BackendValidator, backend: Backend) !BackendV
                 .test_name = "multiple_fd_watch",
                 .status = .failed,
                 .execution_time_ms = @intCast((blk: {
-                const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts_now = time_utils.getMonotonicTime();
                 break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
             }) - start_time),
                 .memory_usage_kb = 0,
@@ -592,7 +593,7 @@ fn testMultipleFdWatch(validator: *BackendValidator, backend: Backend) !BackendV
                 .test_name = "multiple_fd_watch",
                 .status = .failed,
                 .execution_time_ms = @intCast((blk: {
-                const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts_now = time_utils.getMonotonicTime();
                 break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
             }) - start_time),
                 .memory_usage_kb = 0,
@@ -620,7 +621,7 @@ fn testMultipleFdWatch(validator: *BackendValidator, backend: Backend) !BackendV
             .test_name = "multiple_fd_watch",
             .status = .failed,
             .execution_time_ms = @intCast((blk: {
-                const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts_now = time_utils.getMonotonicTime();
                 break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
             }) - start_time),
             .memory_usage_kb = 0,
@@ -633,7 +634,7 @@ fn testMultipleFdWatch(validator: *BackendValidator, backend: Backend) !BackendV
             .test_name = "multiple_fd_watch",
             .status = .failed,
             .execution_time_ms = @intCast((blk: {
-                const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts_now = time_utils.getMonotonicTime();
                 break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
             }) - start_time),
             .memory_usage_kb = 0,
@@ -645,7 +646,7 @@ fn testMultipleFdWatch(validator: *BackendValidator, backend: Backend) !BackendV
         .test_name = "multiple_fd_watch",
         .status = .passed,
         .execution_time_ms = @intCast((blk: {
-            const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+            const ts_now = time_utils.getMonotonicTime();
             break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
         }) - start_time),
         .memory_usage_kb = 0,
@@ -653,7 +654,7 @@ fn testMultipleFdWatch(validator: *BackendValidator, backend: Backend) !BackendV
 }
 
 fn testTimerFunctionality(validator: *BackendValidator, backend: Backend) !BackendValidator.TestCaseResult {
-    const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+    const ts = time_utils.getMonotonicTime();
     const start_time = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
 
     var event_loop = EventLoop.init(validator.allocator, .{ .backend = backend }) catch |err| {
@@ -661,7 +662,7 @@ fn testTimerFunctionality(validator: *BackendValidator, backend: Backend) !Backe
             .test_name = "timer_functionality",
             .status = .failed,
             .execution_time_ms = @intCast((blk: {
-                const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts_now = time_utils.getMonotonicTime();
                 break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
             }) - start_time),
             .memory_usage_kb = 0,
@@ -682,7 +683,7 @@ fn testTimerFunctionality(validator: *BackendValidator, backend: Backend) !Backe
             .test_name = "timer_functionality",
             .status = .failed,
             .execution_time_ms = @intCast((blk: {
-                const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts_now = time_utils.getMonotonicTime();
                 break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
             }) - start_time),
             .memory_usage_kb = 0,
@@ -691,10 +692,10 @@ fn testTimerFunctionality(validator: *BackendValidator, backend: Backend) !Backe
     };
 
     // Wait for timer
-    const ts_timeout = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+    const ts_timeout = time_utils.getMonotonicTime();
     const timeout_end = @as(i64, @intCast(ts_timeout.sec * 1000 + @divTrunc(ts_timeout.nsec, 1_000_000))) + 1000; // 1 second timeout
     while ((blk: {
-        const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts_now = time_utils.getMonotonicTime();
         break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
     }) < timeout_end and !timer_fired) {
         var events: [1]Event = undefined;
@@ -706,7 +707,7 @@ fn testTimerFunctionality(validator: *BackendValidator, backend: Backend) !Backe
             .test_name = "timer_functionality",
             .status = .failed,
             .execution_time_ms = @intCast((blk: {
-                const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts_now = time_utils.getMonotonicTime();
                 break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
             }) - start_time),
             .memory_usage_kb = 0,
@@ -718,7 +719,7 @@ fn testTimerFunctionality(validator: *BackendValidator, backend: Backend) !Backe
         .test_name = "timer_functionality",
         .status = .passed,
         .execution_time_ms = @intCast((blk: {
-            const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+            const ts_now = time_utils.getMonotonicTime();
             break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
         }) - start_time),
         .memory_usage_kb = 0,
@@ -788,7 +789,7 @@ fn testRapidAddRemove(validator: *BackendValidator, backend: Backend) !BackendVa
 }
 
 fn testInvalidFileDescriptors(validator: *BackendValidator, backend: Backend) !BackendValidator.TestCaseResult {
-    const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+    const ts = time_utils.getMonotonicTime();
     const start_time = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
 
     var event_loop = EventLoop.init(validator.allocator, .{ .backend = backend }) catch |err| {
@@ -796,7 +797,7 @@ fn testInvalidFileDescriptors(validator: *BackendValidator, backend: Backend) !B
             .test_name = "invalid_file_descriptors",
             .status = .failed,
             .execution_time_ms = @intCast((blk: {
-                const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts_now = time_utils.getMonotonicTime();
                 break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
             }) - start_time),
             .memory_usage_kb = 0,
@@ -812,7 +813,7 @@ fn testInvalidFileDescriptors(validator: *BackendValidator, backend: Backend) !B
             .test_name = "invalid_file_descriptors",
             .status = .failed,
             .execution_time_ms = @intCast((blk: {
-                const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts_now = time_utils.getMonotonicTime();
                 break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
             }) - start_time),
             .memory_usage_kb = 0,
@@ -826,7 +827,7 @@ fn testInvalidFileDescriptors(validator: *BackendValidator, backend: Backend) !B
         .test_name = "invalid_file_descriptors",
         .status = .passed,
         .execution_time_ms = @intCast((blk: {
-            const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+            const ts_now = time_utils.getMonotonicTime();
             break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
         }) - start_time),
         .memory_usage_kb = 0,

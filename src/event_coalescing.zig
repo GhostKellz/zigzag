@@ -4,6 +4,8 @@
 const std = @import("std");
 const Event = @import("root.zig").Event;
 const EventType = @import("root.zig").EventType;
+const time_utils = @import("time_utils.zig");
+const Timer = time_utils.Timer;
 
 /// Event coalescing configuration
 pub const CoalescingConfig = struct {
@@ -23,7 +25,7 @@ pub const EventCoalescer = struct {
     // Pending events by type
     resize_events: std.ArrayList(Event),
     io_events: std.AutoHashMap(i32, Event), // fd -> latest event
-    coalesce_timer: std.time.Timer,
+    coalesce_timer: Timer,
 
     pub fn init(allocator: std.mem.Allocator, config: CoalescingConfig) !EventCoalescer {
         var io_events = std.AutoHashMap(i32, Event).init(allocator);
@@ -37,7 +39,7 @@ pub const EventCoalescer = struct {
                 .capacity = 0,
             },
             .io_events = io_events,
-            .coalesce_timer = try std.time.Timer.start(),
+            .coalesce_timer = Timer.start(),
         };
     }
 

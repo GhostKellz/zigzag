@@ -6,6 +6,7 @@ const builtin = @import("builtin");
 const Event = @import("root.zig").Event;
 const EventType = @import("root.zig").EventType;
 const Backend = @import("root.zig").Backend;
+const time_utils = @import("time_utils.zig");
 
 /// Timing utilities for high-resolution measurements
 pub const Timer = struct {
@@ -41,7 +42,7 @@ pub const Timer = struct {
                 : "rdx"
             ),
             else => blk: {
-                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts = time_utils.getMonotonicTime();
                 break :blk @as(i64, @intCast(ts.sec * 1_000_000_000 + ts.nsec));
             },
         };
@@ -423,7 +424,7 @@ pub const Benchmark = struct {
 
 test "Timer measurements" {
     const timer = Timer.start();
-    std.time.sleep(1000000); // 1ms
+    time_utils.sleep(1000000); // 1ms
     const elapsed = timer.elapsedMicros();
 
     // Should be roughly 1000 microseconds, allow some variance
@@ -454,7 +455,7 @@ test "Profiler basic operations" {
 
     // Test timing
     const timer = profiler.startTiming();
-    std.time.sleep(100000); // 100μs
+    time_utils.sleep(100000); // 100μs
     profiler.recordEventProcessing(.read_ready, timer);
 
     const metrics = profiler.getMetrics();

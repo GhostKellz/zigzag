@@ -7,6 +7,7 @@ const EventLoop = @import("root.zig").EventLoop;
 const Event = @import("root.zig").Event;
 const EventType = @import("root.zig").EventType;
 const Backend = @import("root.zig").Backend;
+const time_utils = @import("time_utils.zig");
 
 /// Critical path optimizer
 pub const CriticalPathOptimizer = struct {
@@ -165,7 +166,7 @@ pub const CriticalPathOptimizer = struct {
             try self.optimization_cache.put(optimization_hash, OptimizationRecord{
                 .optimization_type = optimization,
                 .applied_at = blk: {
-                    const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    const ts = time_utils.getMonotonicTime();
                     break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
                 },
                 .performance_gain = gain,
@@ -508,7 +509,7 @@ pub const SyscallMinimizer = struct {
         }
 
         pub fn shouldFlush(self: BatchingBuffer) bool {
-            const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+            const ts = time_utils.getMonotonicTime();
             const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
 
             // Flush if batch is full or timeout reached

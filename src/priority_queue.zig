@@ -4,6 +4,7 @@
 const std = @import("std");
 const Event = @import("root.zig").Event;
 const EventType = @import("root.zig").EventType;
+const time_utils = @import("time_utils.zig");
 
 /// Event priority levels
 pub const Priority = enum(u8) {
@@ -151,14 +152,14 @@ pub const BatchProcessor = struct {
         queue: *EventPriorityQueue,
         processor: *const fn ([]const Event) void,
     ) usize {
-        const ts_start = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts_start = time_utils.getMonotonicTime();
         const start_time = @as(i64, @intCast(ts_start.sec * 1000 + @divTrunc(ts_start.nsec, 1_000_000)));
         var batch: [64]Event = undefined; // Stack allocation for small batches
         var total_processed: usize = 0;
 
         while (!queue.isEmpty()) {
             // Check time limit
-            const ts_end = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+            const ts_end = time_utils.getMonotonicTime();
             const end_time = @as(i64, @intCast(ts_end.sec * 1000 + @divTrunc(ts_end.nsec, 1_000_000)));
             const elapsed = end_time - start_time;
             if (elapsed >= self.max_process_time_ms) {

@@ -6,6 +6,7 @@ const builtin = @import("builtin");
 const posix = std.posix;
 const EventLoop = @import("root.zig").EventLoop;
 const Event = @import("root.zig").Event;
+const time_utils = @import("time_utils.zig");
 
 /// File system event types
 pub const FileEvent = enum {
@@ -258,7 +259,7 @@ const InotifyBackend = struct {
                 .event_type = file_event_type,
                 .path = path,
                 .timestamp = blk: {
-                    const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    const ts = time_utils.getMonotonicTime();
                     break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
                 },
                 .cookie = event.cookie,
@@ -366,7 +367,7 @@ const KqueueBackend = struct {
                         .event_type = file_event_type,
                         .path = path,
                         .timestamp = blk: {
-                    const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    const ts = time_utils.getMonotonicTime();
                     break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
                 },
                     };
@@ -513,7 +514,7 @@ const PollingBackend = struct {
                         .event_type = event_type,
                         .path = watched_path.path,
                         .timestamp = blk: {
-                    const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    const ts = time_utils.getMonotonicTime();
                     break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
                 },
                     };
@@ -526,7 +527,7 @@ const PollingBackend = struct {
                         .event_type = .deleted,
                         .path = watched_path.path,
                         .timestamp = blk: {
-                    const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                    const ts = time_utils.getMonotonicTime();
                     break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
                 },
                     };

@@ -7,6 +7,7 @@ const EventLoop = @import("root.zig").EventLoop;
 const Event = @import("root.zig").Event;
 const EventType = @import("root.zig").EventType;
 const Backend = @import("root.zig").Backend;
+const time_utils = @import("time_utils.zig");
 
 /// Usage pattern analyzer
 pub const UsagePatternAnalyzer = struct {
@@ -40,7 +41,7 @@ pub const UsagePatternAnalyzer = struct {
             .event_samples = std.ArrayList(EventSample).init(allocator),
             .analysis_window_ms = window_ms,
             .last_analysis = blk: {
-                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts = time_utils.getMonotonicTime();
                 break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
             },
             .current_pattern = .unknown,
@@ -55,7 +56,7 @@ pub const UsagePatternAnalyzer = struct {
     pub fn recordEvent(self: *UsagePatternAnalyzer, event_type: EventType, processing_time: u64, fd: i32, data_size: usize) !void {
         const sample = EventSample{
             .timestamp = blk: {
-                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts = time_utils.getMonotonicTime();
                 break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
             },
             .event_type = event_type,
@@ -216,7 +217,7 @@ pub const AutoOptimizer = struct {
             .pattern_analyzer = UsagePatternAnalyzer.init(allocator, 30000), // 30 second window
             .current_config = OptimizationConfig{},
             .last_optimization = blk: {
-                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts = time_utils.getMonotonicTime();
                 break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
             },
             .optimization_interval_ms = 5000, // Re-optimize every 5 seconds
@@ -231,7 +232,7 @@ pub const AutoOptimizer = struct {
     pub fn recordEvent(self: *AutoOptimizer, event_type: EventType, processing_time: u64, fd: i32, data_size: usize) !bool {
         try self.pattern_analyzer.recordEvent(event_type, processing_time, fd, data_size);
 
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts = time_utils.getMonotonicTime();
         const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         if ((now - self.last_optimization) >= @as(i64, @intCast(self.optimization_interval_ms))) {
             const old_config = self.current_config;

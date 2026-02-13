@@ -3,6 +3,7 @@
 
 const std = @import("std");
 const Timer = @import("root.zig").Timer;
+const time_utils = @import("time_utils.zig");
 
 /// Timer wheel configuration
 pub const WheelConfig = struct {
@@ -91,11 +92,11 @@ pub const TimerWheel = struct {
             .timer_pool = timer_pool,
             .timer_map = timer_map,
             .current_time = blk: {
-                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts = time_utils.getMonotonicTime();
                 break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
             },
             .last_tick = blk: {
-                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts = time_utils.getMonotonicTime();
                 break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
             },
         };
@@ -227,7 +228,7 @@ pub const TimerWheel = struct {
 
     /// Process timers and advance the wheel
     pub fn tick(self: *TimerWheel) !std.ArrayList(Timer) {
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts = time_utils.getMonotonicTime();
         const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         const elapsed = now - self.last_tick;
 

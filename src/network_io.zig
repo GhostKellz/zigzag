@@ -11,6 +11,7 @@ const EventLoop = @import("root.zig").EventLoop;
 const Event = @import("root.zig").Event;
 const EventType = @import("root.zig").EventType;
 const Backend = @import("root.zig").Backend;
+const time_utils = @import("time_utils.zig");
 
 /// Network connection state
 pub const ConnectionState = enum {
@@ -58,7 +59,7 @@ pub const NetworkConnection = struct {
     user_data: ?*anyopaque,
 
     pub fn init(fd: os.fd_t, address: net.Address) NetworkConnection {
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts = time_utils.getMonotonicTime();
         const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         return NetworkConnection{
             .fd = fd,
@@ -73,13 +74,13 @@ pub const NetworkConnection = struct {
     }
 
     pub fn isExpired(self: NetworkConnection, timeout_ms: i64) bool {
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts = time_utils.getMonotonicTime();
         const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         return (now - self.last_activity) > timeout_ms;
     }
 
     pub fn updateActivity(self: *NetworkConnection) void {
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts = time_utils.getMonotonicTime();
         self.last_activity = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
     }
 
@@ -190,7 +191,7 @@ pub const ConnectionPool = struct {
             error.WouldBlock => {
                 // Connection in progress
                 conn.state = .connecting;
-                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts = time_utils.getMonotonicTime();
                 const now_ms = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
                 try self.connecting_connections.put(fd, now_ms);
 
@@ -264,7 +265,7 @@ pub const ConnectionPool = struct {
         }
 
         // Check connecting connections for timeout
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts = time_utils.getMonotonicTime();
         const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         var connecting_iter = self.connecting_connections.iterator();
         while (connecting_iter.next()) |entry| {
@@ -383,7 +384,7 @@ pub const BandwidthMonitor = struct {
     }
 
     pub fn recordTraffic(self: *BandwidthMonitor, bytes_in: u64, bytes_out: u64) !void {
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts = time_utils.getMonotonicTime();
         const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
 
         try self.samples.append(BandwidthSample{

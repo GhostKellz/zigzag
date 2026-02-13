@@ -5,6 +5,7 @@
 const std = @import("std");
 const EventLoop = @import("root.zig").EventLoop;
 const logging = @import("logging.zig");
+const time_utils = @import("time_utils.zig");
 
 /// Editor-specific file change types
 pub const FileChangeType = enum {
@@ -92,7 +93,7 @@ pub const DebouncedFileWatcher = struct {
             .path = path_copy,
             .last_modified = @intCast(stat.mtime),
             .last_event_time = blk: {
-                const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+                const ts = time_utils.getMonotonicTime();
                 break :blk @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
             },
         };
@@ -103,7 +104,7 @@ pub const DebouncedFileWatcher = struct {
 
     /// Check for file changes
     pub fn pollChanges(self: *DebouncedFileWatcher) ![]const FileChangeEvent {
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts = time_utils.getMonotonicTime();
         const now = @as(i64, @intCast(ts.sec * 1000 + @divTrunc(ts.nsec, 1_000_000)));
         self.pending_events.clearRetainingCapacity();
 

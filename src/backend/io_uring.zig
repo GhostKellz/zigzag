@@ -9,6 +9,7 @@ const EventType = @import("../root.zig").EventType;
 const EventMask = @import("../root.zig").EventMask;
 const Watch = @import("../root.zig").Watch;
 const Timer = @import("../root.zig").Timer;
+const time_utils = @import("../time_utils.zig");
 
 // Define IORING_TIMEOUT_MULTISHOT constant (added in Linux 6.1)
 // This constant may not be available in older versions of Zig's standard library
@@ -151,7 +152,7 @@ pub const IoUringBackend = struct {
 
     /// Add a timer using io_uring timeout
     pub fn addTimer(self: *IoUringBackend, timer_id: u32, ms: u64) !void {
-        const ts = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
+        const ts = time_utils.getMonotonicTime();
         const now = @as(i64, @intCast(ts.sec * 1_000_000_000 + ts.nsec));
         const deadline_ns = now + @as(i64, @intCast(ms * std.time.ns_per_ms));
 
