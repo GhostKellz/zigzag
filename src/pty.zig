@@ -71,7 +71,7 @@ pub const PtyManager = struct {
         // Close all PTY file descriptors
         var iter = self.processes.iterator();
         while (iter.next()) |entry| {
-            posix.close(entry.value_ptr.master_fd);
+            std.Io.Threaded.closeFd(entry.value_ptr.master_fd);
         }
         self.processes.deinit();
     }
@@ -80,7 +80,7 @@ pub const PtyManager = struct {
     pub fn spawn(self: *PtyManager, config: PtyConfig) !PtyProcess {
         // Open PTY master
         const master_fd = try openPtyMaster();
-        errdefer posix.close(master_fd);
+        errdefer std.Io.Threaded.closeFd(master_fd);
 
         // Get slave name
         var slave_name_buf: [256]u8 = undefined;
@@ -155,7 +155,7 @@ pub const PtyManager = struct {
                 // Process has exited
                 process.exited = true;
                 process.exit_status = status;
-                posix.close(process.master_fd);
+                std.Io.Threaded.closeFd(process.master_fd);
                 return status;
             } else if (result == 0) {
                 // Process still running
@@ -220,7 +220,7 @@ fn openPtyMaster() !i32 {
     return switch (builtin.os.tag) {
         .linux => blk: {
             const fd = try posix.open("/dev/ptmx", .{ .ACCMODE = .RDWR }, 0);
-            errdefer posix.close(fd);
+            errdefer std.Io.Threaded.closeFd(fd);
 
             // Grant access to slave
             if (c.grantpt(fd) != 0) {
@@ -292,7 +292,7 @@ fn setupChildProcess(slave_name: []const u8, config: PtyConfig) !void {
 
     // Open slave PTY
     const slave_fd = try posix.open(slave_name, .{ .ACCMODE = .RDWR }, 0);
-    defer posix.close(slave_fd);
+    defer std.Io.Threaded.closeFd(slave_fd);
 
     // Make it controlling terminal
     if (builtin.os.tag == .linux) {

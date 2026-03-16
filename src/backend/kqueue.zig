@@ -33,7 +33,7 @@ pub const KqueueBackend = if (supports_kqueue) struct {
         }
 
         const kqueue_fd = try posix.kqueue();
-        errdefer posix.close(kqueue_fd);
+        errdefer std.Io.Threaded.closeFd(kqueue_fd);
 
         var timer_map = std.AutoHashMap(u32, void).init(allocator);
         errdefer timer_map.deinit();
@@ -48,7 +48,7 @@ pub const KqueueBackend = if (supports_kqueue) struct {
     /// Deinitialize the kqueue backend
     pub fn deinit(self: *KqueueBackend) void {
         self.timer_map.deinit();
-        posix.close(self.kqueue_fd);
+        std.Io.Threaded.closeFd(self.kqueue_fd);
     }
 
     /// Convert EventMask to kqueue filters

@@ -219,7 +219,7 @@ const InotifyBackend = struct {
 
     fn deinit(self: *InotifyBackend) void {
         self.watch_descriptors.deinit();
-        posix.close(self.inotify_fd);
+        std.Io.Threaded.closeFd(self.inotify_fd);
     }
 
     fn addWatch(self: *InotifyBackend, path: []const u8, config: WatchConfig) !i32 {
@@ -302,17 +302,17 @@ const KqueueBackend = struct {
     fn deinit(self: *KqueueBackend) void {
         var iter = self.watched_fds.iterator();
         while (iter.next()) |entry| {
-            posix.close(entry.key_ptr.*);
+            std.Io.Threaded.closeFd(entry.key_ptr.*);
         }
         self.watched_fds.deinit();
-        posix.close(self.kqueue_fd);
+        std.Io.Threaded.closeFd(self.kqueue_fd);
     }
 
     fn addWatch(self: *KqueueBackend, path: []const u8, config: WatchConfig) !i32 {
         _ = config; // TODO: Use config to set appropriate kqueue filters
 
         const fd = try posix.open(path, .{ .ACCMODE = .RDONLY }, 0);
-        errdefer posix.close(fd);
+        errdefer std.Io.Threaded.closeFd(fd);
 
         // Add kqueue event for this file descriptor
         var kevent = std.c.Kevent{
@@ -345,7 +345,7 @@ const KqueueBackend = struct {
 
         _ = std.c.kevent(self.kqueue_fd, &kevent, 1, null, 0, null);
         _ = self.watched_fds.remove(fd);
-        posix.close(fd);
+        std.Io.Threaded.closeFd(fd);
     }
 
     fn readEvents(self: *KqueueBackend, buffer: []u8) ![]FileEventNotification {

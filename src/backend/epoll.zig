@@ -29,7 +29,7 @@ pub const EpollBackend = struct {
             return std.posix.unexpectedErrno(@enumFromInt(rc))
         else
             @intCast(rc);
-        errdefer posix.close(epoll_fd);
+        errdefer std.Io.Threaded.closeFd(epoll_fd);
 
         var timer_fds = std.AutoHashMap(u32, i32).init(allocator);
         errdefer timer_fds.deinit();
@@ -46,11 +46,11 @@ pub const EpollBackend = struct {
         // Close all timer file descriptors
         var iter = self.timer_fds.iterator();
         while (iter.next()) |entry| {
-            posix.close(entry.value_ptr.*);
+            std.Io.Threaded.closeFd(entry.value_ptr.*);
         }
         self.timer_fds.deinit();
 
-        posix.close(self.epoll_fd);
+        std.Io.Threaded.closeFd(self.epoll_fd);
     }
 
     /// Convert EventMask to epoll events
@@ -172,7 +172,7 @@ pub const EpollBackend = struct {
         const timer_fd = posix.timerfd_create(std.os.linux.TIMERFD_CLOCK.MONOTONIC, std.mem.zeroes(std.os.linux.TFD)) catch |err| {
             return err;
         };
-        errdefer posix.close(timer_fd);
+        errdefer std.Io.Threaded.closeFd(timer_fd);
 
         // Set timer
         var new_value = std.os.linux.itimerspec{
@@ -203,7 +203,7 @@ pub const EpollBackend = struct {
     pub fn addRecurringTimer(self: *EpollBackend, timer_id: u32, interval_ms: u64) !void {
         // Create timerfd
         const timer_fd = try posix.timerfd_create(std.os.linux.TIMERFD_CLOCK.MONOTONIC, std.mem.zeroes(std.os.linux.TFD));
-        errdefer posix.close(timer_fd);
+        errdefer std.Io.Threaded.closeFd(timer_fd);
 
         // Set recurring timer
         var new_value = std.os.linux.itimerspec{
@@ -238,7 +238,7 @@ pub const EpollBackend = struct {
             _ = std.os.linux.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_DEL, timer_fd, null);
 
             // Close timerfd
-            posix.close(timer_fd);
+            std.Io.Threaded.closeFd(timer_fd);
 
             // Remove from mapping
             _ = self.timer_fds.remove(timer_id);

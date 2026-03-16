@@ -789,8 +789,8 @@ test "File descriptor watching" {
     try std.testing.expect(!loop.watches.contains(pipe_fds[0]));
 
     // Now close the pipes
-    std.posix.close(pipe_fds[0]);
-    std.posix.close(pipe_fds[1]);
+    std.Io.Threaded.closeFd(pipe_fds[0]);
+    std.Io.Threaded.closeFd(pipe_fds[1]);
 }
 
 test "Timer functionality" {

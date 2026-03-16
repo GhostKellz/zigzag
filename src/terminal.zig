@@ -17,7 +17,7 @@ pub const Pty = struct {
     pub fn create() !Pty {
         // Open /dev/ptmx for master
         const master_fd = try posix.open("/dev/ptmx", .{ .ACCMODE = .RDWR, .NOCTTY = true, .CLOEXEC = true }, 0);
-        errdefer posix.close(master_fd);
+        errdefer std.Io.Threaded.closeFd(master_fd);
 
         // Grant access to the slave pseudoterminal
         try posix.grantpt(master_fd);
@@ -31,7 +31,7 @@ pub const Pty = struct {
 
         // Open the slave pseudoterminal
         const slave_fd = try posix.open(slave_path, .{ .ACCMODE = .RDWR, .NOCTTY = true, .CLOEXEC = true }, 0);
-        errdefer posix.close(slave_fd);
+        errdefer std.Io.Threaded.closeFd(slave_fd);
 
         return Pty{
             .master_fd = master_fd,
@@ -42,8 +42,8 @@ pub const Pty = struct {
 
     /// Close the PTY
     pub fn close(self: *Pty) void {
-        posix.close(self.slave_fd);
-        posix.close(self.master_fd);
+        std.Io.Threaded.closeFd(self.slave_fd);
+        std.Io.Threaded.closeFd(self.master_fd);
         std.heap.page_allocator.free(self.slave_path);
     }
 
@@ -88,7 +88,7 @@ pub const SignalHandler = struct {
         posix.sigaddset(&mask, posix.SIG.TERM);
 
         const signal_fd = try posix.signalfd(-1, &mask, posix.S.OFD_CLOEXEC);
-        errdefer posix.close(signal_fd);
+        errdefer std.Io.Threaded.closeFd(signal_fd);
 
         // Block these signals from default handlers
         try posix.sigprocmask(posix.SIG.BLOCK, &mask, null);
@@ -101,7 +101,7 @@ pub const SignalHandler = struct {
 
     /// Close signal handler
     pub fn close(self: *SignalHandler) void {
-        posix.close(self.signal_fd);
+        std.Io.Threaded.closeFd(self.signal_fd);
     }
 
     /// Register signal handler with event loop

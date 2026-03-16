@@ -75,7 +75,7 @@ pub const PlatformCapabilities = struct {
     fn detectBsdCapabilities(caps: *PlatformCapabilities) void {
         // Check for kqueue
         const kfd = posix.kqueue() catch return;
-        defer posix.close(kfd);
+        defer std.Io.Threaded.closeFd(kfd);
         caps.kqueue_available = true;
 
         // Check for kevent64 (macOS specific)
@@ -97,7 +97,7 @@ pub const PlatformCapabilities = struct {
             .epoll_create1 => blk: {
                 const fd = std.os.linux.epoll_create1(0);
                 if (fd >= 0) {
-                    posix.close(fd);
+                    std.Io.Threaded.closeFd(fd);
                     break :blk true;
                 }
                 break :blk false;
@@ -105,7 +105,7 @@ pub const PlatformCapabilities = struct {
             .timerfd_create => blk: {
                 const fd = std.os.linux.timerfd_create(std.os.linux.TIMERFD_CLOCK.MONOTONIC, std.mem.zeroes(std.os.linux.TFD));
                 if (std.posix.errno(fd) == .SUCCESS) {
-                    posix.close(fd);
+                    std.Io.Threaded.closeFd(fd);
                     break :blk true;
                 }
                 break :blk false;
@@ -115,7 +115,7 @@ pub const PlatformCapabilities = struct {
                 _ = std.c.sigemptyset(&mask);
                 const fd = std.os.linux.signalfd(-1, &mask, 0);
                 if (fd >= 0) {
-                    posix.close(fd);
+                    std.Io.Threaded.closeFd(fd);
                     break :blk true;
                 }
                 break :blk false;

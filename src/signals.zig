@@ -57,7 +57,7 @@ pub const SignalHandler = struct {
         self.restore();
         self.old_handlers.deinit();
         if (self.signal_fd) |fd| {
-            posix.close(fd);
+            std.Io.Threaded.closeFd(fd);
         }
     }
 
