@@ -42,7 +42,7 @@
         },
         .zlog = .{
             .url = "https://github.com/ghostkellz/zlog/archive/main.tar.gz",
-            .hash = "zlog-0.1.4-kS0sWBoECQDzyXRS7L7Swea0U_0gC5Mbl40T2bPKcM-g",
+            .hash = "zlog-0.1.4-kS0sWCoECQADgUPjxOtdfajejhSeQ4IyW0SYn88wvkc6",
         },
     },
     .paths = .{
