@@ -3,9 +3,9 @@ const zigzag = @import("zigzag");
 
 pub fn main() !void {
     // Initialize allocator
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-    const allocator = gpa.allocator();
+    var debug_allocator: std.heap.DebugAllocator(.{}) = .init;
+    defer _ = debug_allocator.deinit();
+    const allocator = debug_allocator.allocator();
 
     // Create event loop with auto-detected backend
     var loop = try zigzag.EventLoop.init(allocator, .{});
