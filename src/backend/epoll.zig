@@ -3,6 +3,7 @@
 
 const std = @import("std");
 const posix = std.posix;
+const linux = std.os.linux;
 const builtin = @import("builtin");
 const EventLoop = @import("../root.zig").EventLoop;
 const Event = @import("../root.zig").Event;
@@ -11,6 +12,23 @@ const EventMask = @import("../root.zig").EventMask;
 const Watch = @import("../root.zig").Watch;
 const Timer = @import("../root.zig").Timer;
 
+/// Create a timerfd (wrapper around raw syscall)
+fn timerfd_create(clockid: linux.timerfd_clockid_t, flags: linux.TFD) !i32 {
+    const rc = linux.timerfd_create(clockid, flags);
+    if (rc > std.math.maxInt(i32)) {
+        return posix.unexpectedErrno(@enumFromInt(rc));
+    }
+    return @intCast(rc);
+}
+
+/// Set timerfd time (wrapper around raw syscall)
+fn timerfd_settime(fd: i32, flags: linux.TFD.TIMER, new_value: *const linux.itimerspec, old_value: ?*linux.itimerspec) !void {
+    const rc = linux.timerfd_settime(fd, flags, new_value, old_value);
+    if (rc != 0) {
+        return posix.unexpectedErrno(@enumFromInt(rc));
+    }
+}
+
 /// Epoll backend implementation
 pub const EpollBackend = struct {
     epoll_fd: i32,
@@ -18,6 +36,7 @@ pub const EpollBackend = struct {
 
     // Timer management
     timer_fds: std.AutoHashMap(u32, i32), // timer_id -> timerfd
+    timer_ids_by_fd: std.AutoHashMap(i32, u32), // timerfd -> timer_id
 
     /// Epoll event structure
     const EpollEvent = std.os.linux.epoll_event;
@@ -34,10 +53,14 @@ pub const EpollBackend = struct {
         var timer_fds = std.AutoHashMap(u32, i32).init(allocator);
         errdefer timer_fds.deinit();
 
+        var timer_ids_by_fd = std.AutoHashMap(i32, u32).init(allocator);
+        errdefer timer_ids_by_fd.deinit();
+
         return EpollBackend{
             .epoll_fd = epoll_fd,
             .allocator = allocator,
             .timer_fds = timer_fds,
+            .timer_ids_by_fd = timer_ids_by_fd,
         };
     }
 
@@ -48,6 +71,7 @@ pub const EpollBackend = struct {
         while (iter.next()) |entry| {
             std.Io.Threaded.closeFd(entry.value_ptr.*);
         }
+        self.timer_ids_by_fd.deinit();
         self.timer_fds.deinit();
 
         std.Io.Threaded.closeFd(self.epoll_fd);
@@ -106,33 +130,28 @@ pub const EpollBackend = struct {
 
     /// Poll for events
     pub fn poll(self: *EpollBackend, events: []Event, timeout_ms: ?u32) !usize {
+        if (events.len == 0) return 0;
+
         var epoll_events: [1024]EpollEvent = undefined;
 
         const timeout = if (timeout_ms) |ms| @as(i32, @intCast(ms)) else -1;
-        const rc = std.os.linux.epoll_wait(self.epoll_fd, &epoll_events, 1024, timeout);
-        const num_events: usize = if (rc > std.math.maxInt(i32))
-            return std.posix.unexpectedErrno(@enumFromInt(rc))
-        else
-            rc;
+        const max_events: u32 = @intCast(@min(events.len, epoll_events.len));
+        const rc = std.os.linux.epoll_wait(self.epoll_fd, &epoll_events, max_events, timeout);
+        const signed_rc: isize = @bitCast(rc);
+        if (signed_rc < 0) {
+            const err = @as(std.posix.E, @enumFromInt(-signed_rc));
+            if (err == .INTR) {
+                return 0;
+            }
+            return std.posix.unexpectedErrno(err);
+        }
+        const num_events: usize = @intCast(rc);
 
         for (0..@intCast(num_events)) |i| {
             const epoll_event = epoll_events[i];
             const fd = epoll_event.data.fd;
 
-            // Check if this is a timer event
-            var is_timer = false;
-            var timer_id: u32 = 0;
-
-            var iter = self.timer_fds.iterator();
-            while (iter.next()) |entry| {
-                if (entry.value_ptr.* == fd) {
-                    is_timer = true;
-                    timer_id = entry.key_ptr.*;
-                    break;
-                }
-            }
-
-            if (is_timer) {
+            if (self.timer_ids_by_fd.get(fd)) |timer_id| {
                 // Timer event - read from timerfd to reset it
                 var buffer: u64 = 0;
                 _ = posix.read(fd, std.mem.asBytes(&buffer)) catch {};
@@ -169,13 +188,11 @@ pub const EpollBackend = struct {
     /// Add a timer using timerfd
     pub fn addTimer(self: *EpollBackend, timer_id: u32, ms: u64) !void {
         // Create timerfd
-        const timer_fd = posix.timerfd_create(std.os.linux.TIMERFD_CLOCK.MONOTONIC, std.mem.zeroes(std.os.linux.TFD)) catch |err| {
-            return err;
-        };
+        const timer_fd = try timerfd_create(linux.TIMERFD_CLOCK.MONOTONIC, std.mem.zeroes(linux.TFD));
         errdefer std.Io.Threaded.closeFd(timer_fd);
 
         // Set timer
-        var new_value = std.os.linux.itimerspec{
+        const new_value = linux.itimerspec{
             .it_interval = .{ .sec = 0, .nsec = 0 }, // one-shot
             .it_value = .{
                 .sec = @intCast(ms / 1000),
@@ -183,30 +200,29 @@ pub const EpollBackend = struct {
             },
         };
 
-        posix.timerfd_settime(timer_fd, std.mem.zeroes(std.os.linux.TFD.TIMER), &new_value, null) catch |err| {
-            return err;
-        };
+        try timerfd_settime(timer_fd, std.mem.zeroes(linux.TFD.TIMER), &new_value, null);
 
         // Add to epoll
         var event = EpollEvent{
-            .events = std.os.linux.EPOLL.IN,
+            .events = linux.EPOLL.IN,
             .data = .{ .fd = timer_fd },
         };
-        const rc = std.os.linux.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_ADD, timer_fd, &event);
-        if (rc != 0) return std.posix.unexpectedErrno(@enumFromInt(rc));
+        const rc = linux.epoll_ctl(self.epoll_fd, linux.EPOLL.CTL_ADD, timer_fd, &event);
+        if (rc != 0) return posix.unexpectedErrno(@enumFromInt(rc));
 
         // Store mapping
         try self.timer_fds.put(timer_id, timer_fd);
+        try self.timer_ids_by_fd.put(timer_fd, timer_id);
     }
 
     /// Add a recurring timer using timerfd
     pub fn addRecurringTimer(self: *EpollBackend, timer_id: u32, interval_ms: u64) !void {
         // Create timerfd
-        const timer_fd = try posix.timerfd_create(std.os.linux.TIMERFD_CLOCK.MONOTONIC, std.mem.zeroes(std.os.linux.TFD));
+        const timer_fd = try timerfd_create(linux.TIMERFD_CLOCK.MONOTONIC, std.mem.zeroes(linux.TFD));
         errdefer std.Io.Threaded.closeFd(timer_fd);
 
         // Set recurring timer
-        var new_value = std.os.linux.itimerspec{
+        const new_value = linux.itimerspec{
             .it_interval = .{
                 .sec = @intCast(interval_ms / 1000),
                 .nsec = @intCast((interval_ms % 1000) * 1_000_000),
@@ -217,18 +233,19 @@ pub const EpollBackend = struct {
             },
         };
 
-        try posix.timerfd_settime(timer_fd, std.mem.zeroes(std.os.linux.TFD.TIMER), &new_value, null);
+        try timerfd_settime(timer_fd, std.mem.zeroes(linux.TFD.TIMER), &new_value, null);
 
         // Add to epoll
         var event = EpollEvent{
-            .events = std.os.linux.EPOLL.IN,
+            .events = linux.EPOLL.IN,
             .data = .{ .fd = timer_fd },
         };
-        const rc = std.os.linux.epoll_ctl(self.epoll_fd, std.os.linux.EPOLL.CTL_ADD, timer_fd, &event);
-        if (rc != 0) return std.posix.unexpectedErrno(@enumFromInt(rc));
+        const rc = linux.epoll_ctl(self.epoll_fd, linux.EPOLL.CTL_ADD, timer_fd, &event);
+        if (rc != 0) return posix.unexpectedErrno(@enumFromInt(rc));
 
         // Store mapping
         try self.timer_fds.put(timer_id, timer_fd);
+        try self.timer_ids_by_fd.put(timer_fd, timer_id);
     }
 
     /// Cancel a timer
@@ -242,6 +259,7 @@ pub const EpollBackend = struct {
 
             // Remove from mapping
             _ = self.timer_fds.remove(timer_id);
+            _ = self.timer_ids_by_fd.remove(timer_fd);
         }
     }
 };
@@ -266,4 +284,34 @@ test "EventMask to epoll conversion" {
     try std.testing.expect(epoll_events & std.os.linux.EPOLL.IN != 0);
     try std.testing.expect(epoll_events & std.os.linux.EPOLL.OUT != 0);
     try std.testing.expect(epoll_events & std.os.linux.EPOLL.ERR == 0);
+}
+
+test "poll respects caller event buffer length" {
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+
+    const allocator = std.testing.allocator;
+    var backend = try EpollBackend.init(allocator);
+    defer backend.deinit();
+
+    var timer_fds: [2]i32 = undefined;
+    for (&timer_fds) |*timer_fd| {
+        timer_fd.* = try timerfd_create(linux.TIMERFD_CLOCK.MONOTONIC, std.mem.zeroes(linux.TFD));
+        try backend.addFd(timer_fd.*, .{ .read = true });
+
+        const timer_spec = linux.itimerspec{
+            .it_interval = .{ .sec = 0, .nsec = 0 },
+            .it_value = .{ .sec = 0, .nsec = 1_000_000 },
+        };
+        try timerfd_settime(timer_fd.*, std.mem.zeroes(linux.TFD.TIMER), &timer_spec, null);
+    }
+    defer {
+        for (timer_fds) |timer_fd| {
+            backend.removeFd(timer_fd) catch {};
+            std.Io.Threaded.closeFd(timer_fd);
+        }
+    }
+
+    var events: [1]Event = undefined;
+    const count = try backend.poll(&events, 100);
+    try std.testing.expectEqual(@as(usize, 1), count);
 }

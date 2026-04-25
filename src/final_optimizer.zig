@@ -795,7 +795,7 @@ pub const FinalOptimizer = struct {
 };
 
 test "Final optimizer initialization" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -807,7 +807,7 @@ test "Final optimizer initialization" {
 }
 
 test "Performance validation" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -832,7 +832,7 @@ test "Performance validation" {
 }
 
 test "Competitor comparison" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 

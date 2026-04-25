@@ -583,7 +583,7 @@ pub const SyscallMinimizer = struct {
 };
 
 test "Critical path optimization" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -607,7 +607,7 @@ test "Critical path optimization" {
 }
 
 test "Memory optimization" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -628,7 +628,7 @@ test "Memory optimization" {
 }
 
 test "Syscall minimization" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 

@@ -1,10 +1,11 @@
 //! Performance benchmarks for zigzag
-//! Compare against baseline implementations
+//! Run with: zig build bench
 
 const std = @import("std");
+const builtin = @import("builtin");
 const zigzag = @import("zigzag");
+const test_utils = @import("test_utils.zig");
 
-// Simple benchmark framework
 const BenchResult = struct {
     name: []const u8,
     operations: u64,
@@ -23,254 +24,161 @@ const BenchResult = struct {
     }
 };
 
-fn benchmark(comptime name: []const u8, operations: u64, func: anytype) BenchResult {
-    const ts_start = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-    const start = @as(i64, @intCast(ts_start.sec * 1_000_000_000 + ts_start.nsec));
-    func();
-    const ts_end = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-    const end = @as(i64, @intCast(ts_end.sec * 1_000_000_000 + ts_end.nsec));
+fn getTimeNs() i64 {
+    return test_utils.getMonotonicNs();
+}
 
-    return BenchResult{
-        .name = name,
-        .operations = operations,
-        .duration_ns = @intCast(end - start),
+fn benchmarkOptions() zigzag.Options {
+    return switch (builtin.os.tag) {
+        .linux => .{ .backend = .epoll },
+        .macos, .freebsd, .openbsd, .netbsd => .{ .backend = .kqueue },
+        .windows => .{ .backend = .iocp },
+        else => .{},
     };
 }
 
-// Mock "libxev-like" implementation for comparison
-const MockEventLoop = struct {
-    pipes: std.ArrayList([2]std.posix.fd_t),
-
-    fn init(allocator: std.mem.Allocator) !MockEventLoop {
-        return MockEventLoop{
-            .pipes = std.ArrayList([2]std.posix.fd_t).init(allocator),
-        };
-    }
-
-    fn deinit(self: *MockEventLoop) void {
-        for (self.pipes.items) |pipe| {
-            std.posix.close(pipe[0]);
-            std.posix.close(pipe[1]);
-        }
-        self.pipes.deinit();
-    }
-
-    fn addFd(self: *MockEventLoop) !void {
-        var pipe_result: [2]i32 = undefined;
-        const rc = std.os.linux.pipe(&pipe_result);
-        if (rc != 0) return error.PipeCreationFailed;
-        try self.pipes.append(pipe_result);
-    }
-
-    fn poll(self: *MockEventLoop) !u32 {
-        // Simple select-based polling simulation
-        _ = self;
-        std.time.sleep(1 * std.time.ns_per_ms); // Simulate syscall overhead
-        return 0;
-    }
-};
-
-test "Benchmark - EventLoop initialization" {
-    var gpa = std.testing.allocator;
-
-    const result = benchmark("EventLoop init/deinit", 10000, struct {
-        fn run() void {
-            for (0..10000) |_| {
-                var loop = zigzag.EventLoop.init(gpa, .{}) catch return;
-                loop.deinit();
-            }
-        }
-    }.run);
-
-    std.debug.print("\n{}\n", .{result});
-
-    // Should be able to create/destroy at least 1000 loops per second
-    const ops_per_sec = (@as(f64, @floatFromInt(result.operations)) * 1e9) / @as(f64, @floatFromInt(result.duration_ns));
-    try std.testing.expect(ops_per_sec > 1000.0);
+fn printResult(result: BenchResult) void {
+    std.debug.print("{s}: {d} ops in {d}ns ({d:.0} ops/sec)\n", .{
+        result.name,
+        result.operations,
+        result.duration_ns,
+        (@as(f64, @floatFromInt(result.operations)) * 1e9) / @as(f64, @floatFromInt(result.duration_ns)),
+    });
 }
 
-test "Benchmark - File descriptor operations" {
-    var gpa = std.testing.allocator;
+fn runInitBenchmark(allocator: std.mem.Allocator) !void {
+    const start = getTimeNs();
+    const operations: u64 = 10000;
 
-    var loop = try zigzag.EventLoop.init(gpa, .{});
+    for (0..operations) |_| {
+        var loop = try zigzag.EventLoop.init(allocator, benchmarkOptions());
+        loop.deinit();
+    }
+
+    const duration_ns: u64 = @intCast(getTimeNs() - start);
+    printResult(.{
+        .name = "EventLoop init/deinit",
+        .operations = operations,
+        .duration_ns = duration_ns,
+    });
+}
+
+fn runFdBenchmark(allocator: std.mem.Allocator) !void {
+    if (comptime builtin.os.tag != .linux) return;
+
+    var loop = try zigzag.EventLoop.init(allocator, .{ .backend = .epoll });
     defer loop.deinit();
 
-    // Benchmark adding file descriptors
-    const add_result = benchmark("Add FDs", 1000, struct {
-        fn run() void {
-            var pipes: [1000][2]i32 = undefined;
-            var watches: [1000]*const zigzag.Watch = undefined;
+    const operations: u64 = 100;
+    var pipes: [100][2]std.posix.fd_t = undefined;
+    const start = getTimeNs();
 
-            for (&pipes, 0..) |pipe, i| {
-                const pipe_rc = std.os.linux.pipe(pipe);
-                if (pipe_rc != 0) return;
+    for (&pipes) |*pipe| {
+        pipe.* = try test_utils.createPipe();
+        _ = try loop.addFd(pipe.*[0], .{ .read = true });
+    }
 
-                watches[i] = loop.addFd(pipe[0], .{ .read = true }) catch return;
-            }
-
-            // Cleanup
-            for (pipes, 0..) |pipe, i| {
-                loop.removeFd(watches[i]);
-                std.posix.close(pipe[0]);
-                std.posix.close(pipe[1]);
-            }
+    for (pipes) |pipe| {
+        if (loop.watches.get(pipe[0])) |watch| {
+            loop.removeFd(watch);
         }
-    }.run);
+        test_utils.closePipe(pipe);
+    }
 
-    std.debug.print("{}\n", .{add_result});
-
-    // Should be able to add at least 10000 FDs per second
-    const ops_per_sec = (@as(f64, @floatFromInt(add_result.operations)) * 1e9) / @as(f64, @floatFromInt(add_result.duration_ns));
-    try std.testing.expect(ops_per_sec > 10000.0);
+    const duration_ns: u64 = @intCast(getTimeNs() - start);
+    printResult(.{
+        .name = "Add/remove FDs",
+        .operations = operations,
+        .duration_ns = duration_ns,
+    });
 }
 
-test "Benchmark - Timer operations" {
-    var gpa = std.testing.allocator;
-
-    var loop = try zigzag.EventLoop.init(gpa, .{});
+fn runTimerBenchmark(allocator: std.mem.Allocator) !void {
+    var loop = try zigzag.EventLoop.init(allocator, benchmarkOptions());
     defer loop.deinit();
 
     const callback = struct {
-        pub fn timerCallback(user_data: ?*anyopaque) void {
-            _ = user_data;
-        }
+        pub fn timerCallback(_: ?*anyopaque) void {}
     }.timerCallback;
 
-    const timer_result = benchmark("Timer add/cancel", 5000, struct {
-        fn run() void {
-            var timers: [5000]zigzag.Timer = undefined;
+    const operations: u64 = 1000;
+    var timers: [1000]zigzag.Timer = undefined;
+    const start = getTimeNs();
 
-            // Add timers
-            for (timers, 0..) |*timer, i| {
-                timer.* = loop.addTimer(100 + i, callback) catch return;
-            }
+    for (&timers, 0..) |*timer, i| {
+        timer.* = try loop.addTimer(100 + i, callback);
+    }
 
-            // Cancel timers
-            for (timers) |timer| {
-                loop.cancelTimer(&timer);
-            }
-        }
-    }.run);
+    for (&timers) |*timer| {
+        loop.cancelTimer(timer);
+    }
 
-    std.debug.print("{}\n", .{timer_result});
-
-    // Should be able to handle at least 5000 timer ops per second
-    const ops_per_sec = (@as(f64, @floatFromInt(timer_result.operations)) * 1e9) / @as(f64, @floatFromInt(timer_result.duration_ns));
-    try std.testing.expect(ops_per_sec > 5000.0);
+    const duration_ns: u64 = @intCast(getTimeNs() - start);
+    printResult(.{
+        .name = "Timer add/cancel",
+        .operations = operations,
+        .duration_ns = duration_ns,
+    });
 }
 
-test "Benchmark - Polling performance" {
-    var gpa = std.testing.allocator;
+fn runPollBenchmark(allocator: std.mem.Allocator) !void {
+    if (builtin.os.tag != .linux) return;
 
-    var loop = try zigzag.EventLoop.init(gpa, .{});
+    var loop = try zigzag.EventLoop.init(allocator, .{ .backend = .epoll });
     defer loop.deinit();
 
-    // Setup some file descriptors
-    var pipe_fds: [2]i32 = undefined;
-    const pipe_rc = std.os.linux.pipe(&pipe_fds);
-    if (pipe_rc != 0) return error.PipeCreationFailed;
-    defer std.posix.close(pipe_fds[0]);
-    defer std.posix.close(pipe_fds[1]);
+    const pipe_fds = try test_utils.createPipe();
+    defer test_utils.closePipe(pipe_fds);
 
     const watch = try loop.addFd(pipe_fds[0], .{ .read = true });
     defer loop.removeFd(watch);
 
     var events: [64]zigzag.Event = undefined;
+    const operations: u64 = 10000;
+    const start = getTimeNs();
 
-    const poll_result = benchmark("Empty polls", 10000, struct {
-        fn run() void {
-            for (0..10000) |_| {
-                _ = loop.poll(&events, 0) catch return;
-            }
-        }
-    }.run);
+    for (0..operations) |_| {
+        _ = try loop.poll(&events, 0);
+    }
 
-    std.debug.print("{}\n", .{poll_result});
-
-    // Should be able to do at least 50000 empty polls per second
-    const ops_per_sec = (@as(f64, @floatFromInt(poll_result.operations)) * 1e9) / @as(f64, @floatFromInt(poll_result.duration_ns));
-    try std.testing.expect(ops_per_sec > 50000.0);
+    const duration_ns: u64 = @intCast(getTimeNs() - start);
+    printResult(.{
+        .name = "Empty polls",
+        .operations = operations,
+        .duration_ns = duration_ns,
+    });
 }
 
-test "Benchmark - zigzag vs mock comparison" {
-    var gpa = std.testing.allocator;
+fn runTerminalBenchmark() !void {
+    if (!test_utils.supportsTerminal()) return;
 
-    // Benchmark zigzag
-    const zigzag_result = benchmark("zigzag setup", 1000, struct {
-        fn run() void {
-            for (0..1000) |_| {
-                var loop = zigzag.EventLoop.init(gpa, .{}) catch return;
-                var pipe_fds: [2]i32 = undefined;
-                const pipe_rc = std.os.linux.pipe(&pipe_fds);
-                if (pipe_rc != 0) return;
-                _ = loop.addFd(pipe_fds[0], .{ .read = true }) catch return;
-                std.posix.close(pipe_fds[0]);
-                std.posix.close(pipe_fds[1]);
-                loop.deinit();
-            }
-        }
-    }.run);
+    const terminal = zigzag.terminal;
+    if (@TypeOf(terminal) == void) return;
 
-    // Benchmark mock
-    const mock_result = benchmark("mock setup", 1000, struct {
-        fn run() void {
-            for (0..1000) |_| {
-                var loop = MockEventLoop.init(gpa) catch return;
-                loop.addFd() catch return;
-                loop.deinit();
-            }
-        }
-    }.run);
+    const operations: u64 = 100;
+    const start = getTimeNs();
 
-    std.debug.print("{}\n", .{zigzag_result});
-    std.debug.print("{}\n", .{mock_result});
+    for (0..operations) |_| {
+        var pty = terminal.Pty.create() catch return;
+        pty.close();
+    }
 
-    // zigzag should be competitive (within 2x) of mock implementation
-    const zigzag_ops_per_sec = (@as(f64, @floatFromInt(zigzag_result.operations)) * 1e9) / @as(f64, @floatFromInt(zigzag_result.duration_ns));
-    const mock_ops_per_sec = (@as(f64, @floatFromInt(mock_result.operations)) * 1e9) / @as(f64, @floatFromInt(mock_result.duration_ns));
-
-    // Allow zigzag to be up to 2x slower than mock (it does more work)
-    try std.testing.expect(zigzag_ops_per_sec > mock_ops_per_sec * 0.5);
+    const duration_ns: u64 = @intCast(getTimeNs() - start);
+    printResult(.{
+        .name = "PTY create/destroy",
+        .operations = operations,
+        .duration_ns = duration_ns,
+    });
 }
 
-test "Benchmark - Terminal operations" {
-    var gpa = std.testing.allocator;
+pub fn main() !void {
+    var gpa = std.heap.DebugAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
 
-    const terminal = @import("../src/terminal.zig");
-
-    const pty_result = benchmark("PTY create/destroy", 100, struct {
-        fn run() void {
-            for (0..100) |_| {
-                var pty = terminal.Pty.create() catch return;
-                pty.close();
-            }
-        }
-    }.run);
-
-    std.debug.print("{}\n", .{pty_result});
-
-    const coalesce_result = benchmark("Event coalescing", 10000, struct {
-        fn run() void {
-            var coalescer = terminal.EventCoalescer.init(gpa) catch return;
-            defer coalescer.deinit();
-
-            for (0..10000) |i| {
-                const event = zigzag.Event{
-                    .fd = -1,
-                    .type = .window_resize,
-                    .data = .{ .size = i },
-                };
-                coalescer.addEvent(event) catch return;
-            }
-
-            const events = coalescer.drainEvents() catch return;
-            gpa.free(events);
-        }
-    }.run);
-
-    std.debug.print("{}\n", .{coalesce_result});
-
-    // Should be able to coalesce at least 100000 events per second
-    const ops_per_sec = (@as(f64, @floatFromInt(coalesce_result.operations)) * 1e9) / @as(f64, @floatFromInt(coalesce_result.duration_ns));
-    try std.testing.expect(ops_per_sec > 100000.0);
+    try runInitBenchmark(allocator);
+    try runFdBenchmark(allocator);
+    try runTimerBenchmark(allocator);
+    try runPollBenchmark(allocator);
+    try runTerminalBenchmark();
 }

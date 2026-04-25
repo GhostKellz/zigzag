@@ -1,4 +1,5 @@
 const std = @import("std");
+const build_zon = @import("build.zig.zon");
 
 // Although this function looks imperative, it does not perform the build
 // directly and instead it mutates the build graph (`b`) that will be then
@@ -24,8 +25,6 @@ pub fn build(b: *std.Build) void {
     const enable_terminal = b.option(bool, "terminal", "Enable terminal features (PTY, signals)") orelse true;
     const enable_zsync = b.option(bool, "zsync", "Enable zsync async runtime integration") orelse true;
     const enable_debug = b.option(bool, "debug_events", "Enable event debugging") orelse false;
-    const enable_zlog = b.option(bool, "zlog", "Enable zlog structured logging") orelse true;
-    const enable_zdoc = b.option(bool, "zdoc", "Enable zdoc documentation generation") orelse true;
 
     // Get zsync dependency if enabled
     const zsync_dep = if (enable_zsync) b.dependency("zsync", .{
@@ -33,17 +32,6 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     }) else null;
 
-    // Get zlog dependency if enabled
-    const zlog_dep = if (enable_zlog) b.dependency("zlog", .{
-        .target = target,
-        .optimize = optimize,
-    }) else null;
-
-    // Get zdoc dependency if enabled
-    const zdoc_dep = if (enable_zdoc) b.dependency("zdoc", .{
-        .target = target,
-        .optimize = optimize,
-    }) else null;
 
     // This creates a module, which represents a collection of source files alongside
     // some compilation options, such as optimization mode and linked system libraries.
@@ -69,14 +57,14 @@ pub fn build(b: *std.Build) void {
     if (zsync_dep) |dep| {
         mod.addImport("zsync", dep.module("zsync"));
     }
-
-    // Add zlog module if enabled
-    if (zlog_dep) |dep| {
-        mod.addImport("zlog", dep.module("zlog"));
+    if (target.result.os.tag == .windows) {
+        mod.linkSystemLibrary("ws2_32", .{});
     }
+
 
     // Add build options as module options
     const build_options = b.addOptions();
+    build_options.addOption([]const u8, "version", build_zon.version);
     build_options.addOption(bool, "enable_io_uring", enable_io_uring);
     build_options.addOption(bool, "enable_epoll", enable_epoll);
     build_options.addOption(bool, "enable_kqueue", enable_kqueue);
@@ -84,8 +72,6 @@ pub fn build(b: *std.Build) void {
     build_options.addOption(bool, "enable_terminal", enable_terminal);
     build_options.addOption(bool, "enable_zsync", enable_zsync);
     build_options.addOption(bool, "enable_debug", enable_debug);
-    build_options.addOption(bool, "enable_zlog", enable_zlog);
-    build_options.addOption(bool, "enable_zdoc", enable_zdoc);
 
     mod.addImport("build_options", build_options.createModule());
 
@@ -126,6 +112,9 @@ pub fn build(b: *std.Build) void {
             },
         }),
     });
+    if (target.result.os.tag == .windows) {
+        exe.root_module.linkSystemLibrary("ws2_32", .{});
+    }
 
     // This declares intent for the executable to be installed into the
     // install prefix when running `zig build` (i.e. when executing the default
@@ -186,30 +175,116 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_mod_tests.step);
     test_step.dependOn(&run_exe_tests.step);
 
-    // Documentation generation step
-    if (zdoc_dep) |dep| {
-        const zdoc_exe = dep.artifact("zdoc");
-        const docs_step = b.step("docs", "Generate API documentation");
+    // Add external test suite from tests/ directory (correctness tests only)
+    const test_files = [_][]const u8{
+        "tests/comprehensive_tests.zig",
+        "tests/stress_tests.zig",
+        "tests/memory_leak_tests.zig",
+        "tests/ghostshell_tests.zig",
+        "tests/grim_editor_tests.zig",
+    };
 
-        const run_zdoc = b.addRunArtifact(zdoc_exe);
-        run_zdoc.addArgs(&.{
-            "--format=html",
-            "src/root.zig",
-            "src/terminal.zig",
-            "src/event_coalescing.zig",
-            "src/timer_wheel.zig",
-            "src/pty.zig",
-            "src/signals.zig",
-            "src/file_watching.zig",
-            "src/network_io.zig",
-            "src/advanced_timers.zig",
-            "src/async_runtime.zig",
-            "src/api.zig",
-            "docs/",
+    for (test_files) |test_file| {
+        const ext_test = b.addTest(.{
+            .root_module = b.createModule(.{
+                .root_source_file = b.path(test_file),
+                .target = target,
+                .optimize = optimize,
+                .imports = &.{
+                    .{ .name = "zigzag", .module = mod },
+                    .{ .name = "build_options", .module = build_options.createModule() },
+                },
+            }),
         });
-
-        docs_step.dependOn(&run_zdoc.step);
+        if (zsync_dep) |dep| {
+            ext_test.root_module.addImport("zsync", dep.module("zsync"));
+        }
+        const run_ext_test = b.addRunArtifact(ext_test);
+        test_step.dependOn(&run_ext_test.step);
     }
+
+    const windows_iocp_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/windows_iocp_smoke.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "zigzag", .module = mod },
+                .{ .name = "build_options", .module = build_options.createModule() },
+            },
+        }),
+    });
+    if (zsync_dep) |dep| {
+        windows_iocp_tests.root_module.addImport("zsync", dep.module("zsync"));
+    }
+    windows_iocp_tests.root_module.linkSystemLibrary("ws2_32", .{});
+    const run_windows_iocp_tests = b.addRunArtifact(windows_iocp_tests);
+    const windows_iocp_step = b.step("test-windows-iocp", "Run focused Windows IOCP smoke tests");
+    windows_iocp_step.dependOn(&run_windows_iocp_tests.step);
+
+    const windows_filewatch_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/windows_filewatch_smoke.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "zigzag", .module = mod },
+                .{ .name = "build_options", .module = build_options.createModule() },
+            },
+        }),
+    });
+    if (zsync_dep) |dep| {
+        windows_filewatch_tests.root_module.addImport("zsync", dep.module("zsync"));
+    }
+    if (target.result.os.tag == .windows) {
+        windows_filewatch_tests.root_module.linkSystemLibrary("ws2_32", .{});
+    }
+    const run_windows_filewatch_tests = b.addRunArtifact(windows_filewatch_tests);
+    const windows_filewatch_step = b.step("test-windows-filewatch", "Run focused Windows file watching smoke tests");
+    windows_filewatch_step.dependOn(&run_windows_filewatch_tests.step);
+
+    const windows_stress_tests = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/windows_stress_smoke.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "zigzag", .module = mod },
+                .{ .name = "build_options", .module = build_options.createModule() },
+            },
+        }),
+    });
+    if (zsync_dep) |dep| {
+        windows_stress_tests.root_module.addImport("zsync", dep.module("zsync"));
+    }
+    if (target.result.os.tag == .windows) {
+        windows_stress_tests.root_module.linkSystemLibrary("ws2_32", .{});
+    }
+    const run_windows_stress_tests = b.addRunArtifact(windows_stress_tests);
+    const windows_stress_step = b.step("test-windows-stress", "Run focused Windows stress smoke tests");
+    windows_stress_step.dependOn(&run_windows_stress_tests.step);
+
+    // Benchmarks are separate from correctness tests (run with: zig build bench)
+    const bench_step = b.step("bench", "Run performance benchmarks");
+    const bench_exe = b.addExecutable(.{
+        .name = "zigzag-bench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/benchmarks.zig"),
+            .target = target,
+            .optimize = .ReleaseFast,
+            .imports = &.{
+                .{ .name = "zigzag", .module = mod },
+                .{ .name = "build_options", .module = build_options.createModule() },
+            },
+        }),
+    });
+    bench_exe.root_module.link_libc = true;
+    if (zsync_dep) |dep| {
+        bench_exe.root_module.addImport("zsync", dep.module("zsync"));
+    }
+    const run_bench = b.addRunArtifact(bench_exe);
+    bench_step.dependOn(&run_bench.step);
+
 
     // Just like flags, top level steps are also listed in the `--help` menu.
     //

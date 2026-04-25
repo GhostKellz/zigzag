@@ -445,7 +445,7 @@ pub const MemoryPoolOptimizer = struct {
 };
 
 test "Usage pattern analysis" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -464,7 +464,7 @@ test "Usage pattern analysis" {
 }
 
 test "Auto optimizer configuration" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -484,7 +484,7 @@ test "Auto optimizer configuration" {
 }
 
 test "Memory pool optimization" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 

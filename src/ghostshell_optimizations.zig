@@ -39,21 +39,29 @@ pub const PTYEventBatcher = struct {
     pub fn init(allocator: std.mem.Allocator) !PTYEventBatcher {
         return .{
             .allocator = allocator,
-            .batch_buffer = std.ArrayList(u8).init(allocator),
+            .batch_buffer = .empty,
         };
     }
 
     pub fn deinit(self: *PTYEventBatcher) void {
-        self.batch_buffer.deinit();
+        self.batch_buffer.deinit(self.allocator);
     }
 
     /// Add data to batch
     pub fn addData(self: *PTYEventBatcher, data: []const u8) !void {
-        try self.batch_buffer.appendSlice(data);
+        try self.batch_buffer.appendSlice(self.allocator, data);
     }
 
     /// Check if batch should be flushed
     pub fn shouldFlush(self: PTYEventBatcher) bool {
+        if (self.batch_buffer.items.len == 0) {
+            return false;
+        }
+
+        if (self.last_flush_ns == 0) {
+            return self.batch_buffer.items.len >= self.max_batch_size;
+        }
+
         const ts = time_utils.getMonotonicTime();
         const now = @as(i64, @intCast(ts.sec * 1_000_000_000 + ts.nsec));
         const time_since_flush = now - self.last_flush_ns;
@@ -85,7 +93,7 @@ pub const RenderBufferPool = struct {
     pub fn init(allocator: std.mem.Allocator) !RenderBufferPool {
         return .{
             .allocator = allocator,
-            .free_buffers = std.ArrayList([]u8).init(allocator),
+            .free_buffers = .empty,
         };
     }
 
@@ -93,12 +101,12 @@ pub const RenderBufferPool = struct {
         for (self.free_buffers.items) |buffer| {
             self.allocator.free(buffer);
         }
-        self.free_buffers.deinit();
+        self.free_buffers.deinit(self.allocator);
     }
 
     /// Acquire a buffer from pool
     pub fn acquire(self: *RenderBufferPool) ![]u8 {
-        if (self.free_buffers.popOrNull()) |buffer| {
+        if (self.free_buffers.pop()) |buffer| {
             return buffer;
         }
 
@@ -109,7 +117,7 @@ pub const RenderBufferPool = struct {
     /// Release buffer back to pool
     pub fn release(self: *RenderBufferPool, buffer: []u8) !void {
         if (self.free_buffers.items.len < self.max_buffers) {
-            try self.free_buffers.append(buffer);
+            try self.free_buffers.append(self.allocator, buffer);
         } else {
             self.allocator.free(buffer);
         }

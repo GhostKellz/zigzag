@@ -59,7 +59,7 @@ pub const DebouncedFileWatcher = struct {
             .allocator = allocator,
             .watches = std.StringHashMap(EditorFileWatch).init(allocator),
             .config = config,
-            .pending_events = std.ArrayList(FileChangeEvent).init(allocator),
+            .pending_events = .empty,
         };
     }
 
@@ -73,7 +73,7 @@ pub const DebouncedFileWatcher = struct {
         for (self.pending_events.items) |event| {
             self.allocator.free(event.path);
         }
-        self.pending_events.deinit();
+        self.pending_events.deinit(self.allocator);
     }
 
     /// Add file to watch
@@ -122,7 +122,7 @@ pub const DebouncedFileWatcher = struct {
             const stat = std.fs.cwd().statFile(watch.path) catch |err| {
                 if (err == error.FileNotFound) {
                     // File was deleted
-                    try self.pending_events.append(.{
+                    try self.pending_events.append(self.allocator, .{
                         .path = try self.allocator.dupe(u8, watch.path),
                         .change_type = .deleted,
                         .timestamp = now,
@@ -135,7 +135,7 @@ pub const DebouncedFileWatcher = struct {
             const current_mtime: i64 = @intCast(stat.mtime);
             if (current_mtime != watch.last_modified) {
                 // File was modified
-                try self.pending_events.append(.{
+                try self.pending_events.append(self.allocator, .{
                     .path = try self.allocator.dupe(u8, watch.path),
                     .change_type = .modified,
                     .timestamp = now,
@@ -202,7 +202,7 @@ pub const SyntaxFileWatcher = struct {
     pub fn init(allocator: std.mem.Allocator) !SyntaxFileWatcher {
         return .{
             .allocator = allocator,
-            .syntax_paths = std.ArrayList([]const u8).init(allocator),
+            .syntax_paths = .empty,
         };
     }
 
@@ -210,13 +210,13 @@ pub const SyntaxFileWatcher = struct {
         for (self.syntax_paths.items) |path| {
             self.allocator.free(path);
         }
-        self.syntax_paths.deinit();
+        self.syntax_paths.deinit(self.allocator);
     }
 
     /// Add syntax file to watch
     pub fn addSyntaxFile(self: *SyntaxFileWatcher, path: []const u8) !void {
         const path_copy = try self.allocator.dupe(u8, path);
-        try self.syntax_paths.append(path_copy);
+        try self.syntax_paths.append(self.allocator, path_copy);
     }
 
     /// Mark syntax as invalidated

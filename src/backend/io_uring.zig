@@ -10,7 +10,6 @@ const EventMask = @import("../root.zig").EventMask;
 const Watch = @import("../root.zig").Watch;
 const Timer = @import("../root.zig").Timer;
 const time_utils = @import("../time_utils.zig");
-
 // Define IORING_TIMEOUT_MULTISHOT constant (added in Linux 6.1)
 // This constant may not be available in older versions of Zig's standard library
 const IORING_TIMEOUT_MULTISHOT: u32 = (1 << 6);
@@ -25,6 +24,7 @@ pub const IoUringBackend = struct {
 
     // User data mapping (maps io_uring user_data to file descriptors)
     user_data_to_fd: std.AutoHashMap(u64, i32),
+    fd_to_user_data: std.AutoHashMap(i32, u64),
     next_user_data: u64 = 1000, // Start at 1000 to avoid conflicts with timer IDs
 
     // Timer management
@@ -42,6 +42,9 @@ pub const IoUringBackend = struct {
         var user_data_to_fd = std.AutoHashMap(u64, i32).init(allocator);
         errdefer user_data_to_fd.deinit();
 
+        var fd_to_user_data = std.AutoHashMap(i32, u64).init(allocator);
+        errdefer fd_to_user_data.deinit();
+
         var timers = std.AutoHashMap(u32, Timer).init(allocator);
         errdefer timers.deinit();
 
@@ -50,6 +53,7 @@ pub const IoUringBackend = struct {
             .allocator = allocator,
             .watches = watches,
             .user_data_to_fd = user_data_to_fd,
+            .fd_to_user_data = fd_to_user_data,
             .next_user_data = 1000,
             .timers = timers,
             .next_timer_id = 1,
@@ -58,12 +62,24 @@ pub const IoUringBackend = struct {
 
     /// Deinitialize the io_uring backend
     pub fn deinit(self: *IoUringBackend) void {
-        // Cancel all pending operations - TODO: implement proper cancellation
-        // _ = self.ring.cancel(0, 0) catch {};
+        // Cancel all pending poll operations
+        var iterator = self.user_data_to_fd.iterator();
+        while (iterator.next()) |entry| {
+            const user_data = entry.key_ptr.*;
+            if (self.ring.get_sqe()) |sqe| {
+                sqe.prep_cancel(user_data, 0);
+            } else |_| {
+                break;
+            }
+        }
 
-        // Note: No need to submit_and_wait since we haven't submitted any operations
+        // Submit cancellations if any were queued
+        if (self.user_data_to_fd.count() > 0) {
+            _ = self.ring.submit() catch {};
+        }
 
         self.timers.deinit();
+        self.fd_to_user_data.deinit();
         self.user_data_to_fd.deinit();
         self.watches.deinit();
         self.ring.deinit();
@@ -104,6 +120,7 @@ pub const IoUringBackend = struct {
 
         // Map user_data to fd for later lookup
         try self.user_data_to_fd.put(user_data, fd);
+        try self.fd_to_user_data.put(fd, user_data);
 
         // Setup poll operation
         const poll_events = eventMaskToIoUring(mask);
@@ -116,14 +133,25 @@ pub const IoUringBackend = struct {
 
     /// Modify file descriptor in io_uring
     pub fn modifyFd(self: *IoUringBackend, fd: i32, mask: EventMask) !void {
-        if (self.watches.getPtr(fd)) |_| {
-            // For io_uring, we need to cancel the existing poll and create a new one
-            // This is simplified - in production, we'd track the user_data better
-            self.removeFd(fd);
-            try self.addFd(fd, mask);
-        } else {
+        if (self.watches.getPtr(fd)) |watch| {
+            watch.events = mask;
+
+            if (self.fd_to_user_data.get(fd)) |user_data| {
+                var sqe = self.ring.get_sqe() catch return error.SubmissionQueueFull;
+                sqe.prep_cancel(user_data, 0);
+                _ = self.ring.submit() catch {};
+
+                sqe = try self.ring.get_sqe();
+                sqe.prep_poll_add(fd, eventMaskToIoUring(mask));
+                sqe.user_data = user_data;
+                _ = try self.ring.submit();
+                return;
+            }
+
             return error.FdNotWatched;
         }
+
+        return error.FdNotWatched;
     }
 
     /// Remove file descriptor from io_uring
@@ -131,16 +159,8 @@ pub const IoUringBackend = struct {
         // Remove the watch
         _ = self.watches.remove(fd);
 
-        // Remove from user_data mapping (find by fd value)
-        var iterator = self.user_data_to_fd.iterator();
-        var to_remove: ?u64 = null;
-        while (iterator.next()) |entry| {
-            if (entry.value_ptr.* == fd) {
-                to_remove = entry.key_ptr.*;
-                break;
-            }
-        }
-        if (to_remove) |user_data| {
+        if (self.fd_to_user_data.fetchRemove(fd)) |entry| {
+            const user_data = entry.value;
             _ = self.user_data_to_fd.remove(user_data);
 
             // Cancel the poll operation
@@ -152,21 +172,17 @@ pub const IoUringBackend = struct {
 
     /// Add a timer using io_uring timeout
     pub fn addTimer(self: *IoUringBackend, timer_id: u32, ms: u64) !void {
-        const ts = time_utils.getMonotonicTime();
-        const now = @as(i64, @intCast(ts.sec * 1_000_000_000 + ts.nsec));
-        const deadline_ns = now + @as(i64, @intCast(ms * std.time.ns_per_ms));
-
         // Prepare timeout SQE
         var sqe = self.ring.get_sqe() catch return error.SubmissionQueueFull;
 
-        // Set up timeout operation
+        // Set up relative timeout in kernel_timespec format
         var timeout_ts: std.os.linux.kernel_timespec = .{
-            .sec = @intCast(@divTrunc(deadline_ns, std.time.ns_per_s)),
-            .nsec = @intCast(@mod(deadline_ns, std.time.ns_per_s)),
+            .sec = @intCast(ms / 1000),
+            .nsec = @intCast((ms % 1000) * 1_000_000),
         };
         sqe.prep_timeout(&timeout_ts, 0, 0);
 
-        // Store user data to identify this as a timer
+        // Store timer_id as user_data to identify this timer when it fires
         sqe.user_data = timer_id;
 
         // Submit the SQE
@@ -188,7 +204,13 @@ pub const IoUringBackend = struct {
         sqe.prep_timeout(&ts, 0, IORING_TIMEOUT_MULTISHOT);
         sqe.user_data = timer_id;
 
-        _ = try self.ring.submit();
+        const submitted = self.ring.submit() catch |err| {
+            if (err == error.InvalidArgument or err == error.OperationNotSupported) {
+                return error.OperationNotSupported;
+            }
+            return err;
+        };
+        _ = submitted;
     }
 
     /// Cancel a timer
@@ -201,6 +223,8 @@ pub const IoUringBackend = struct {
 
     /// Poll for events
     pub fn poll(self: *IoUringBackend, events: []Event, timeout_ms: ?u32) !usize {
+        if (events.len == 0) return 0;
+
         // Submit any pending SQEs first
         _ = self.ring.submit() catch 0;
 
@@ -221,8 +245,8 @@ pub const IoUringBackend = struct {
                 _ = self.ring.submit() catch 0;
             }
         } else {
-            // No timeout specified - just submit without waiting
-            _ = self.ring.submit() catch 0;
+            // No timeout specified - block until at least one completion is available.
+            _ = self.ring.submit_and_wait(1) catch 0;
         }
 
         var event_count: usize = 0;
@@ -247,11 +271,24 @@ pub const IoUringBackend = struct {
                 event_count += 1;
             } else if (self.user_data_to_fd.get(cqe.user_data)) |fd| {
                 // FD event - map back to file descriptor
-                const event_type: EventType = if (cqe.res >= 0) .read_ready else .io_error;
+                const event_type: EventType = if (cqe.res < 0)
+                    .io_error
+                else if (@as(u32, @intCast(cqe.res)) & std.os.linux.POLL.ERR != 0)
+                    .io_error
+                else if (@as(u32, @intCast(cqe.res)) & std.os.linux.POLL.HUP != 0)
+                    .hangup
+                else if (@as(u32, @intCast(cqe.res)) & std.os.linux.POLL.OUT != 0)
+                    .write_ready
+                else
+                    .read_ready;
+                const event_size: usize = if (cqe.res > 0 and event_type == .read_ready)
+                    @intCast(cqe.res)
+                else
+                    0;
                 events[event_count] = Event{
                     .fd = fd,
                     .type = event_type,
-                    .data = .{ .size = if (cqe.res >= 0) @intCast(cqe.res) else 0 },
+                    .data = .{ .size = event_size },
                 };
                 event_count += 1;
 
@@ -284,4 +321,36 @@ test "IoUringBackend basic operations" {
 
     // Test that ring is initialized
     try std.testing.expect(backend.ring.fd > 0);
+}
+
+test "IoUringBackend tracks user data by fd" {
+    if (@import("builtin").os.tag != .linux) return error.SkipZigTest;
+
+    const allocator = std.testing.allocator;
+    var backend = IoUringBackend.init(allocator, 64) catch |err| {
+        if (err == error.SystemOutdated or err == error.PermissionDenied) return error.SkipZigTest;
+        return err;
+    };
+    defer backend.deinit();
+
+    var pipe_fds: [2]i32 = undefined;
+    const rc = std.os.linux.pipe(&pipe_fds);
+    if (rc != 0) return error.PipeCreationFailed;
+    defer {
+        std.Io.Threaded.closeFd(pipe_fds[0]);
+        std.Io.Threaded.closeFd(pipe_fds[1]);
+    }
+
+    try backend.addFd(pipe_fds[0], .{ .read = true });
+    try std.testing.expect(backend.fd_to_user_data.contains(pipe_fds[0]));
+
+    try backend.modifyFd(pipe_fds[0], .{ .read = true, .write = true });
+    try std.testing.expect(backend.fd_to_user_data.contains(pipe_fds[0]));
+
+    var events: [4]Event = undefined;
+    _ = try backend.poll(&events, 0);
+
+    backend.removeFd(pipe_fds[0]);
+    _ = try backend.poll(&events, 0);
+    try std.testing.expect(!backend.fd_to_user_data.contains(pipe_fds[0]));
 }

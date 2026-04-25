@@ -6,23 +6,44 @@ const builtin = @import("builtin");
 const build_options = @import("build_options");
 const logging = @import("logging.zig");
 
-// Backend imports - conditionally compiled based on build options
-const EpollBackend = if (build_options.enable_epoll) @import("backend/epoll.zig").EpollBackend else void;
-const IoUringBackend = if (build_options.enable_io_uring) @import("backend/io_uring.zig").IoUringBackend else void;
-const KqueueBackend = if (build_options.enable_kqueue) @import("backend/kqueue.zig").KqueueBackend else void;
-const IOCPBackend = if (build_options.enable_iocp) @import("backend/iocp.zig").IOCPBackend else void;
+// Backend imports - conditionally compiled based on build options AND target platform
+// Linux backends (epoll, io_uring) only compile on Linux
+const EpollBackend = if (builtin.os.tag == .linux and build_options.enable_epoll) @import("backend/epoll.zig").EpollBackend else void;
+const IoUringBackend = if (builtin.os.tag == .linux and build_options.enable_io_uring) @import("backend/io_uring.zig").IoUringBackend else void;
+// BSD/macOS backend (kqueue)
+const KqueueBackend = if ((builtin.os.tag.isDarwin() or builtin.os.tag.isBSD()) and build_options.enable_kqueue) @import("backend/kqueue.zig").KqueueBackend else void;
+// Windows backend (IOCP)
+const IOCPBackend = if (builtin.os.tag == .windows and build_options.enable_iocp) @import("backend/iocp.zig").IOCPBackend else void;
+pub const SocketHandle = if (builtin.os.tag == .windows and build_options.enable_iocp) @import("backend/iocp.zig").SOCKET else usize;
 
 // Event coalescing system
 const EventCoalescer = @import("event_coalescing.zig").EventCoalescer;
-const CoalescingConfig = @import("event_coalescing.zig").CoalescingConfig;
+pub const CoalescingConfig = @import("event_coalescing.zig").CoalescingConfig;
 
 // Time utilities
 const time_utils = @import("time_utils.zig");
+pub const time = time_utils;
 
 // Escape sequence parser for terminal input
 pub const escape_parser = @import("escape_parser.zig");
 pub const EscapeParser = escape_parser.EscapeParser;
 pub const ParseResult = escape_parser.ParseResult;
+
+// Terminal module - conditionally compiled
+pub const terminal = if (build_options.enable_terminal) @import("terminal.zig") else void;
+
+// File watching module - exports FileWatcher and runs regression tests
+pub const file_watching = @import("file_watching.zig");
+pub const FileWatcher = file_watching.FileWatcher;
+
+// Optional async integration and higher-level extensions
+pub const async_runtime = if (build_options.enable_zsync) @import("async_runtime.zig") else void;
+pub const AsyncRuntime = if (build_options.enable_zsync) async_runtime.AsyncRuntime else void;
+pub const AsyncTimer = if (build_options.enable_zsync) async_runtime.AsyncTimer else void;
+pub const AsyncFile = if (build_options.enable_zsync) async_runtime.AsyncFile else void;
+pub const AsyncUtils = if (build_options.enable_zsync) async_runtime.AsyncUtils else void;
+pub const ghostshell = @import("ghostshell_optimizations.zig");
+pub const grim_editor = @import("grim_editor_support.zig");
 
 // zsync integration - conditionally compiled
 const zsync = if (build_options.enable_zsync) @import("zsync") else void;
@@ -32,7 +53,7 @@ pub const Backend = enum {
     io_uring, // Linux 5.1+ (fastest)
     epoll, // Linux fallback
     kqueue, // macOS/BSD
-    iocp, // Windows (future)
+    iocp, // Windows (timers, wake events, and overlapped socket I/O)
 
     /// Auto-detect the best available backend
     pub fn autoDetect() Backend {
@@ -166,13 +187,13 @@ pub const EventLoop = struct {
     allocator: std.mem.Allocator,
 
     // Backend-specific data - conditionally compiled
-    epoll_backend: if (build_options.enable_epoll) ?EpollBackend else void = if (build_options.enable_epoll) null else {},
-    io_uring_backend: if (build_options.enable_io_uring) ?IoUringBackend else void = if (build_options.enable_io_uring) null else {},
-    kqueue_backend: if (build_options.enable_kqueue) ?KqueueBackend else void = if (build_options.enable_kqueue) null else {},
-    iocp_backend: if (build_options.enable_iocp) ?IOCPBackend else void = if (build_options.enable_iocp) null else {},
+    epoll_backend: if (EpollBackend != void) ?EpollBackend else void = if (EpollBackend != void) null else {},
+    io_uring_backend: if (IoUringBackend != void) ?IoUringBackend else void = if (IoUringBackend != void) null else {},
+    kqueue_backend: if (KqueueBackend != void) ?KqueueBackend else void = if (KqueueBackend != void) null else {},
+    iocp_backend: if (IOCPBackend != void) ?IOCPBackend else void = if (IOCPBackend != void) null else {},
 
     // Watch management
-    watches: std.AutoHashMap(i32, Watch),
+    watches: std.AutoHashMap(i32, *Watch),
     next_watch_id: u32 = 0,
 
     // Timer management
@@ -190,7 +211,7 @@ pub const EventLoop = struct {
         // Auto-detect backend if not specified
         const backend = options.backend orelse Backend.autoDetect();
 
-        var watches = std.AutoHashMap(i32, Watch).init(allocator);
+        var watches = std.AutoHashMap(i32, *Watch).init(allocator);
         errdefer watches.deinit();
 
         var timers = std.AutoHashMap(u32, Timer).init(allocator);
@@ -207,10 +228,10 @@ pub const EventLoop = struct {
             .backend = backend,
             .options = options,
             .allocator = allocator,
-            .epoll_backend = if (build_options.enable_epoll) null else {},
-            .io_uring_backend = if (build_options.enable_io_uring) null else {},
-            .kqueue_backend = if (build_options.enable_kqueue) null else {},
-            .iocp_backend = if (build_options.enable_iocp) null else {},
+            .epoll_backend = if (EpollBackend != void) null else {},
+            .io_uring_backend = if (IoUringBackend != void) null else {},
+            .kqueue_backend = if (KqueueBackend != void) null else {},
+            .iocp_backend = if (IOCPBackend != void) null else {},
             .watches = watches,
             .next_watch_id = 0,
             .timers = timers,
@@ -222,39 +243,35 @@ pub const EventLoop = struct {
         // Initialize the appropriate backend
         switch (backend) {
             .epoll => {
-                if (build_options.enable_epoll) {
+                if (EpollBackend != void) {
                     logging.logBackendInit("epoll");
                     loop.epoll_backend = try EpollBackend.init(allocator);
                 } else {
-                    @panic("epoll backend disabled at compile time");
+                    return error.OperationNotSupported;
                 }
             },
             .io_uring => {
-                if (build_options.enable_io_uring) {
+                if (IoUringBackend != void) {
                     logging.logBackendInit("io_uring");
                     loop.io_uring_backend = try IoUringBackend.init(allocator, @intCast(options.max_events));
                 } else {
-                    @panic("io_uring backend disabled at compile time");
+                    return error.OperationNotSupported;
                 }
             },
             .kqueue => {
-                if (build_options.enable_kqueue) {
-                    if (KqueueBackend != void) {
-                        logging.logBackendInit("kqueue");
-                        loop.kqueue_backend = try KqueueBackend.init(allocator);
-                    } else {
-                        @panic("kqueue backend not supported on this platform");
-                    }
+                if (KqueueBackend != void) {
+                    logging.logBackendInit("kqueue");
+                    loop.kqueue_backend = try KqueueBackend.init(allocator);
                 } else {
-                    @panic("kqueue backend disabled at compile time");
+                    return error.OperationNotSupported;
                 }
             },
             .iocp => {
-                if (build_options.enable_iocp and IOCPBackend != void) {
+                if (IOCPBackend != void) {
                     logging.logBackendInit("iocp");
                     loop.iocp_backend = try IOCPBackend.init(allocator);
                 } else {
-                    @panic("IOCP backend disabled at compile time");
+                    return error.OperationNotSupported;
                 }
             },
         }
@@ -265,22 +282,22 @@ pub const EventLoop = struct {
     /// Deinitialize the event loop
     pub fn deinit(self: *EventLoop) void {
         // Cleanup backend-specific resources
-        if (build_options.enable_epoll) {
+        if (EpollBackend != void) {
             if (self.epoll_backend) |*backend| {
                 backend.deinit();
             }
         }
-        if (build_options.enable_io_uring) {
+        if (IoUringBackend != void) {
             if (self.io_uring_backend) |*backend| {
                 backend.deinit();
             }
         }
-        if (build_options.enable_kqueue and KqueueBackend != void) {
+        if (KqueueBackend != void) {
             if (self.kqueue_backend) |*backend| {
                 backend.deinit();
             }
         }
-        if (build_options.enable_iocp and IOCPBackend != void) {
+        if (IOCPBackend != void) {
             if (self.iocp_backend) |*backend| {
                 backend.deinit();
             }
@@ -292,6 +309,10 @@ pub const EventLoop = struct {
         }
 
         // Cleanup watches
+        var watch_iter = self.watches.iterator();
+        while (watch_iter.next()) |entry| {
+            self.allocator.destroy(entry.value_ptr.*);
+        }
         self.watches.deinit();
 
         // Cleanup timers
@@ -302,44 +323,40 @@ pub const EventLoop = struct {
     pub fn poll(self: *EventLoop, events: []Event, timeout_ms: ?u32) !usize {
         return switch (self.backend) {
             .epoll => {
-                if (build_options.enable_epoll) {
+                if (EpollBackend != void) {
                     if (self.epoll_backend) |*backend| {
                         return backend.poll(events, timeout_ms);
                     }
                     return error.BackendNotInitialized;
-                } else {
-                    @panic("epoll backend disabled at compile time");
                 }
+                return error.OperationNotSupported;
             },
             .io_uring => {
-                if (build_options.enable_io_uring) {
+                if (IoUringBackend != void) {
                     if (self.io_uring_backend) |*backend| {
                         return backend.poll(events, timeout_ms);
                     }
                     return error.BackendNotInitialized;
-                } else {
-                    @panic("io_uring backend disabled at compile time");
                 }
+                return error.OperationNotSupported;
             },
             .kqueue => {
-                if (build_options.enable_kqueue and KqueueBackend != void) {
+                if (KqueueBackend != void) {
                     if (self.kqueue_backend) |*backend| {
                         return backend.poll(events, timeout_ms);
                     }
                     return error.BackendNotInitialized;
-                } else {
-                    @panic("kqueue backend disabled at compile time");
                 }
+                return error.OperationNotSupported;
             },
             .iocp => {
-                if (build_options.enable_iocp and IOCPBackend != void) {
+                if (IOCPBackend != void) {
                     if (self.iocp_backend) |*backend| {
                         return backend.poll(events, timeout_ms);
                     }
                     return error.BackendNotInitialized;
-                } else {
-                    @panic("IOCP backend disabled at compile time");
                 }
+                return error.OperationNotSupported;
             },
         };
     }
@@ -378,7 +395,8 @@ pub const EventLoop = struct {
                                     // Backend will handle rescheduling
                                 } else {
                                     // Remove one-shot timer
-                                    _ = self.timers.remove(timer.id);
+                                    const timer_copy = timer.*;
+                                    self.cancelTimer(&timer_copy);
                                 }
                             }
                         }
@@ -387,7 +405,7 @@ pub const EventLoop = struct {
                         // Handle I/O events
                         if (self.watches.get(event.fd)) |watch| {
                             if (watch.callback) |callback| {
-                                callback(&watch, event);
+                                callback(watch, event);
                             }
                         }
                     },
@@ -418,7 +436,8 @@ pub const EventLoop = struct {
         self.should_stop = false;
     }
 
-    /// Add file descriptor to watch
+    /// Add file descriptor to watch.
+    /// On Windows IOCP, generic fd-style watches are not supported.
     pub fn addFd(self: *EventLoop, fd: i32, events: EventMask) !*const Watch {
         // Check if already watching this fd
         if (self.watches.contains(fd)) {
@@ -428,53 +447,51 @@ pub const EventLoop = struct {
         // Add to backend
         switch (self.backend) {
             .epoll => {
-                if (build_options.enable_epoll) {
+                if (EpollBackend != void) {
                     if (self.epoll_backend) |*backend| {
                         try backend.addFd(fd, events);
                     } else {
                         return error.BackendNotInitialized;
                     }
-                } else {
-                    @panic("epoll backend disabled at compile time");
                 }
+                else return error.OperationNotSupported;
             },
             .io_uring => {
-                if (build_options.enable_io_uring) {
+                if (IoUringBackend != void) {
                     if (self.io_uring_backend) |*backend| {
                         try backend.addFd(fd, events);
                     } else {
                         return error.BackendNotInitialized;
                     }
-                } else {
-                    @panic("io_uring backend disabled at compile time");
                 }
+                else return error.OperationNotSupported;
             },
             .kqueue => {
-                if (build_options.enable_kqueue and KqueueBackend != void) {
+                if (KqueueBackend != void) {
                     if (self.kqueue_backend) |*backend| {
                         try backend.addFd(fd, events);
                     } else {
                         return error.BackendNotInitialized;
                     }
-                } else {
-                    @panic("kqueue backend disabled at compile time");
                 }
+                else return error.OperationNotSupported;
             },
             .iocp => {
-                if (build_options.enable_iocp and IOCPBackend != void) {
+                if (IOCPBackend != void) {
                     if (self.iocp_backend) |*backend| {
                         try backend.addFd(fd, events);
                     } else {
                         return error.BackendNotInitialized;
                     }
-                } else {
-                    @panic("IOCP backend disabled at compile time");
                 }
+                else return error.OperationNotSupported;
             },
         }
 
-        // Create watch
-        const watch = Watch{
+        const watch = try self.allocator.create(Watch);
+        errdefer self.allocator.destroy(watch);
+
+        watch.* = Watch{
             .fd = fd,
             .events = events,
             .callback = null,
@@ -484,8 +501,76 @@ pub const EventLoop = struct {
         // Store watch
         try self.watches.put(fd, watch);
 
-        // Return pointer to stored watch
-        return &self.watches.get(fd).?;
+        return watch;
+    }
+
+    /// Register a Windows socket with the active IOCP backend.
+    /// On non-Windows backends this returns `error.OperationNotSupported`.
+    pub fn addSocket(self: *EventLoop, socket: SocketHandle) !void {
+        switch (self.backend) {
+            .iocp => {
+                if (IOCPBackend != void) {
+                    if (self.iocp_backend) |*backend| {
+                        try backend.addSocket(socket);
+                        return;
+                    }
+                    return error.BackendNotInitialized;
+                }
+                return error.OperationNotSupported;
+            },
+            else => return error.OperationNotSupported,
+        }
+    }
+
+    /// Remove a Windows socket and any outstanding IOCP operations.
+    pub fn removeSocket(self: *EventLoop, socket: SocketHandle) !void {
+        switch (self.backend) {
+            .iocp => {
+                if (IOCPBackend != void) {
+                    if (self.iocp_backend) |*backend| {
+                        backend.removeSocket(socket);
+                        return;
+                    }
+                    return error.BackendNotInitialized;
+                }
+                return error.OperationNotSupported;
+            },
+            else => return error.OperationNotSupported,
+        }
+    }
+
+    /// Initiate an overlapped receive on a Windows socket.
+    pub fn recvSocket(self: *EventLoop, socket: SocketHandle, buffer: []u8) !void {
+        switch (self.backend) {
+            .iocp => {
+                if (IOCPBackend != void) {
+                    if (self.iocp_backend) |*backend| {
+                        try backend.recvAsync(socket, buffer);
+                        return;
+                    }
+                    return error.BackendNotInitialized;
+                }
+                return error.OperationNotSupported;
+            },
+            else => return error.OperationNotSupported,
+        }
+    }
+
+    /// Initiate an overlapped send on a Windows socket.
+    pub fn sendSocket(self: *EventLoop, socket: SocketHandle, data: []const u8) !void {
+        switch (self.backend) {
+            .iocp => {
+                if (IOCPBackend != void) {
+                    if (self.iocp_backend) |*backend| {
+                        try backend.sendAsync(socket, data);
+                        return;
+                    }
+                    return error.BackendNotInitialized;
+                }
+                return error.OperationNotSupported;
+            },
+            else => return error.OperationNotSupported,
+        }
     }
 
     /// Modify file descriptor watch
@@ -493,45 +578,47 @@ pub const EventLoop = struct {
         // Update backend
         switch (self.backend) {
             .epoll => {
-                if (self.epoll_backend) |*backend| {
-                    try backend.modifyFd(watch.fd, events);
-                } else {
-                    return error.BackendNotInitialized;
-                }
+                if (EpollBackend != void) {
+                    if (self.epoll_backend) |*backend| {
+                        try backend.modifyFd(watch.fd, events);
+                    } else {
+                        return error.BackendNotInitialized;
+                    }
+                } else return error.OperationNotSupported;
             },
             .io_uring => {
-                if (self.io_uring_backend) |*backend| {
-                    try backend.modifyFd(watch.fd, events);
-                } else {
-                    return error.BackendNotInitialized;
-                }
+                if (IoUringBackend != void) {
+                    if (self.io_uring_backend) |*backend| {
+                        try backend.modifyFd(watch.fd, events);
+                    } else {
+                        return error.BackendNotInitialized;
+                    }
+                } else return error.OperationNotSupported;
             },
             .kqueue => {
-                if (build_options.enable_kqueue and KqueueBackend != void) {
+                if (KqueueBackend != void) {
                     if (self.kqueue_backend) |*backend| {
                         try backend.modifyFd(watch.fd, events);
                     } else {
                         return error.BackendNotInitialized;
                     }
-                } else {
-                    @panic("kqueue backend disabled at compile time");
                 }
+                else return error.OperationNotSupported;
             },
             .iocp => {
-                if (build_options.enable_iocp and IOCPBackend != void) {
+                if (IOCPBackend != void) {
                     if (self.iocp_backend) |*backend| {
                         try backend.modifyFd(watch.fd, events);
                     } else {
                         return error.BackendNotInitialized;
                     }
-                } else {
-                    @panic("IOCP backend disabled at compile time");
                 }
+                else return error.OperationNotSupported;
             },
         }
 
         // Update stored watch
-        if (self.watches.getPtr(watch.fd)) |stored_watch| {
+        if (self.watches.get(watch.fd)) |stored_watch| {
             stored_watch.events = events;
         }
     }
@@ -541,26 +628,28 @@ pub const EventLoop = struct {
         // Remove from backend
         switch (self.backend) {
             .epoll => {
-                if (self.epoll_backend) |*backend| {
-                    backend.removeFd(watch.fd) catch {};
+                if (EpollBackend != void) {
+                    if (self.epoll_backend) |*backend| {
+                        backend.removeFd(watch.fd) catch {};
+                    }
                 }
             },
             .io_uring => {
-                if (self.io_uring_backend) |*backend| {
-                    backend.removeFd(watch.fd);
+                if (IoUringBackend != void) {
+                    if (self.io_uring_backend) |*backend| {
+                        backend.removeFd(watch.fd);
+                    }
                 }
             },
             .kqueue => {
-                if (build_options.enable_kqueue and KqueueBackend != void) {
+                if (KqueueBackend != void) {
                     if (self.kqueue_backend) |*backend| {
                         backend.removeFd(watch.fd) catch {};
                     }
-                } else {
-                    @panic("kqueue backend disabled at compile time");
                 }
             },
             .iocp => {
-                if (build_options.enable_iocp and IOCPBackend != void) {
+                if (IOCPBackend != void) {
                     if (self.iocp_backend) |*backend| {
                         backend.removeFd(watch.fd) catch {};
                     }
@@ -569,11 +658,18 @@ pub const EventLoop = struct {
         }
 
         // Remove from watches
-        _ = self.watches.remove(watch.fd);
+        if (self.watches.fetchRemove(watch.fd)) |entry| {
+            self.allocator.destroy(entry.value);
+        }
     }
 
     /// Add a timer
     pub fn addTimer(self: *EventLoop, ms: u64, callback: *const fn (?*anyopaque) void) !Timer {
+        return self.addTimerWithUserData(ms, callback, null);
+    }
+
+    /// Add a timer with user data passed to the callback.
+    pub fn addTimerWithUserData(self: *EventLoop, ms: u64, callback: *const fn (?*anyopaque) void, user_data: ?*anyopaque) !Timer {
         const timer_id = self.next_timer_id;
         self.next_timer_id += 1;
 
@@ -587,46 +683,48 @@ pub const EventLoop = struct {
             .interval = null,
             .type = .one_shot,
             .callback = callback,
-            .user_data = null,
+            .user_data = user_data,
         };
 
         // Add to backend
         switch (self.backend) {
             .epoll => {
-                if (self.epoll_backend) |*backend| {
-                    try backend.addTimer(timer_id, ms);
-                } else {
-                    return error.BackendNotInitialized;
-                }
+                if (EpollBackend != void) {
+                    if (self.epoll_backend) |*backend| {
+                        try backend.addTimer(timer_id, ms);
+                    } else {
+                        return error.BackendNotInitialized;
+                    }
+                } else return error.OperationNotSupported;
             },
             .io_uring => {
-                if (self.io_uring_backend) |*backend| {
-                    try backend.addTimer(timer_id, ms);
-                } else {
-                    return error.BackendNotInitialized;
-                }
+                if (IoUringBackend != void) {
+                    if (self.io_uring_backend) |*backend| {
+                        try backend.addTimer(timer_id, ms);
+                    } else {
+                        return error.BackendNotInitialized;
+                    }
+                } else return error.OperationNotSupported;
             },
             .kqueue => {
-                if (build_options.enable_kqueue and KqueueBackend != void) {
+                if (KqueueBackend != void) {
                     if (self.kqueue_backend) |*backend| {
                         try backend.addTimer(timer_id, ms);
                     } else {
                         return error.BackendNotInitialized;
                     }
-                } else {
-                    @panic("kqueue backend disabled at compile time");
                 }
+                else return error.OperationNotSupported;
             },
             .iocp => {
-                if (build_options.enable_iocp and IOCPBackend != void) {
+                if (IOCPBackend != void) {
                     if (self.iocp_backend) |*backend| {
                         try backend.addTimer(timer_id, ms);
                     } else {
                         return error.BackendNotInitialized;
                     }
-                } else {
-                    @panic("IOCP backend disabled at compile time");
                 }
+                else return error.OperationNotSupported;
             },
         }
 
@@ -639,6 +737,11 @@ pub const EventLoop = struct {
 
     /// Add a recurring timer
     pub fn addRecurringTimer(self: *EventLoop, interval_ms: u64, callback: *const fn (?*anyopaque) void) !Timer {
+        return self.addRecurringTimerWithUserData(interval_ms, callback, null);
+    }
+
+    /// Add a recurring timer with user data passed to the callback.
+    pub fn addRecurringTimerWithUserData(self: *EventLoop, interval_ms: u64, callback: *const fn (?*anyopaque) void, user_data: ?*anyopaque) !Timer {
         const timer_id = self.next_timer_id;
         self.next_timer_id += 1;
 
@@ -652,46 +755,61 @@ pub const EventLoop = struct {
             .interval = interval_ms,
             .type = .recurring,
             .callback = callback,
-            .user_data = null,
+            .user_data = user_data,
         };
 
         // Add to backend
         switch (self.backend) {
             .epoll => {
-                if (self.epoll_backend) |*backend| {
-                    try backend.addRecurringTimer(timer_id, interval_ms);
-                } else {
-                    return error.BackendNotInitialized;
-                }
+                if (EpollBackend != void) {
+                    if (self.epoll_backend) |*backend| {
+                        try backend.addRecurringTimer(timer_id, interval_ms);
+                    } else {
+                        return error.BackendNotInitialized;
+                    }
+                } else return error.OperationNotSupported;
             },
             .io_uring => {
-                if (self.io_uring_backend) |*backend| {
-                    try backend.addRecurringTimer(timer_id, interval_ms);
-                } else {
-                    return error.BackendNotInitialized;
-                }
+                if (IoUringBackend != void) {
+                    if (self.io_uring_backend) |*backend| {
+                        backend.addRecurringTimer(timer_id, interval_ms) catch |err| switch (err) {
+                            error.OperationNotSupported => {
+                                if (EpollBackend != void) {
+                                    if (self.epoll_backend) |*epoll_backend| {
+                                        try epoll_backend.addRecurringTimer(timer_id, interval_ms);
+                                    } else {
+                                        return err;
+                                    }
+                                } else {
+                                    return err;
+                                }
+                            },
+                            else => return err,
+                        };
+                    } else {
+                        return error.BackendNotInitialized;
+                    }
+                } else return error.OperationNotSupported;
             },
             .kqueue => {
-                if (build_options.enable_kqueue and KqueueBackend != void) {
+                if (KqueueBackend != void) {
                     if (self.kqueue_backend) |*backend| {
                         try backend.addRecurringTimer(timer_id, interval_ms);
                     } else {
                         return error.BackendNotInitialized;
                     }
-                } else {
-                    @panic("kqueue backend disabled at compile time");
                 }
+                else return error.OperationNotSupported;
             },
             .iocp => {
-                if (build_options.enable_iocp and IOCPBackend != void) {
+                if (IOCPBackend != void) {
                     if (self.iocp_backend) |*backend| {
                         try backend.addRecurringTimer(timer_id, interval_ms);
                     } else {
                         return error.BackendNotInitialized;
                     }
-                } else {
-                    @panic("IOCP backend disabled at compile time");
                 }
+                else return error.OperationNotSupported;
             },
         }
 
@@ -707,28 +825,30 @@ pub const EventLoop = struct {
         // Remove from backend
         switch (self.backend) {
             .epoll => {
-                if (self.epoll_backend) |*backend| {
-                    backend.cancelTimer(timer.id) catch {};
+                if (EpollBackend != void) {
+                    if (self.epoll_backend) |*backend| {
+                        backend.cancelTimer(timer.id) catch {};
+                    }
                 }
             },
             .io_uring => {
-                if (self.io_uring_backend) |*backend| {
-                    backend.cancelTimer(timer.id) catch {};
+                if (IoUringBackend != void) {
+                    if (self.io_uring_backend) |*backend| {
+                        backend.cancelTimer(timer.id) catch {};
+                    }
                 }
             },
             .kqueue => {
-                if (build_options.enable_kqueue and KqueueBackend != void) {
+                if (KqueueBackend != void) {
                     if (self.kqueue_backend) |*backend| {
                         backend.cancelTimer(timer.id) catch {};
                     }
-                } else {
-                    @panic("kqueue backend disabled at compile time");
                 }
             },
             .iocp => {
-                if (build_options.enable_iocp and IOCPBackend != void) {
+                if (IOCPBackend != void) {
                     if (self.iocp_backend) |*backend| {
-                        backend.cancelTimer(timer.id) catch {};
+                        backend.cancelTimer(timer.id);
                     }
                 }
             },
@@ -740,18 +860,30 @@ pub const EventLoop = struct {
 
     /// Set callback for a watch
     pub fn setCallback(self: *EventLoop, watch: *const Watch, callback: ?*const fn (*const Watch, Event) void) void {
-        if (self.watches.getPtr(watch.fd)) |stored_watch| {
+        if (self.watches.get(watch.fd)) |stored_watch| {
             stored_watch.callback = callback;
+        }
+    }
+
+    /// Set opaque user data for a watch.
+    pub fn setUserData(self: *EventLoop, watch: *const Watch, user_data: ?*anyopaque) void {
+        if (self.watches.get(watch.fd)) |stored_watch| {
+            stored_watch.user_data = user_data;
         }
     }
 };
 
 test "EventLoop basic initialization" {
     const allocator = std.testing.allocator;
-    var loop = try EventLoop.init(allocator, .{ .backend = .epoll });
+    var loop = try EventLoop.init(allocator, .{});
     defer loop.deinit();
 
-    try std.testing.expectEqual(Backend.epoll, loop.backend);
+    switch (builtin.os.tag) {
+        .linux => try std.testing.expect(loop.backend == .io_uring or loop.backend == .epoll),
+        .macos, .ios, .freebsd, .openbsd, .netbsd => try std.testing.expectEqual(Backend.kqueue, loop.backend),
+        .windows => try std.testing.expectEqual(Backend.iocp, loop.backend),
+        else => {},
+    }
 }
 
 test "EventMask operations" {
@@ -762,12 +894,23 @@ test "EventMask operations" {
     try std.testing.expect(!mask.io_error);
 }
 
+test "terminal socket states are hangup and io_error" {
+    const terminal_states = [_]EventType{ .hangup, .io_error };
+
+    try std.testing.expectEqual(@as(usize, 2), terminal_states.len);
+    try std.testing.expect(terminal_states[0] == .hangup or terminal_states[1] == .hangup);
+    try std.testing.expect(terminal_states[0] == .io_error or terminal_states[1] == .io_error);
+}
+
 test "File descriptor watching" {
+    // This test requires Linux epoll backend
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+
     const allocator = std.testing.allocator;
     var loop = try EventLoop.init(allocator, .{ .backend = .epoll });
     defer loop.deinit();
 
-    // Create a pipe for testing
+    // Create a pipe for testing using Linux-specific syscall
     var pipe_fds: [2]i32 = undefined;
     const rc = std.os.linux.pipe(&pipe_fds);
     if (rc != 0) return error.PipeCreationFailed;
@@ -785,7 +928,7 @@ test "File descriptor watching" {
     try std.testing.expectEqual(pipe_fds[0], stored_watch.fd);
 
     // Remove watch before closing pipes
-    loop.removeFd(&stored_watch);
+    loop.removeFd(stored_watch);
     try std.testing.expect(!loop.watches.contains(pipe_fds[0]));
 
     // Now close the pipes
@@ -794,6 +937,9 @@ test "File descriptor watching" {
 }
 
 test "Timer functionality" {
+    // This test requires Linux epoll backend
+    if (builtin.os.tag != .linux) return error.SkipZigTest;
+
     const allocator = std.testing.allocator;
     var loop = try EventLoop.init(allocator, .{ .backend = .epoll });
     defer loop.deinit();

@@ -14,21 +14,31 @@ pub fn main() !void {
     std.debug.print("ZigZag event loop initialized with backend: {}\n", .{loop.backend});
 }
 
-test "simple test" {
-    const gpa = std.testing.allocator;
-    var list: std.ArrayList(i32) = .empty;
-    defer list.deinit(gpa); // Try commenting this out and see if zig detects the memory leak!
-    try list.append(gpa, 42);
-    try std.testing.expectEqual(@as(i32, 42), list.pop());
+// Smoke tests for zigzag library
+test "EventLoop init/deinit" {
+    const allocator = std.testing.allocator;
+    var loop = try zigzag.EventLoop.init(allocator, .{});
+    defer loop.deinit();
+    try std.testing.expect(!loop.should_stop);
 }
 
-test "fuzz example" {
-    const Context = struct {
-        fn testOne(context: @This(), input: []const u8) anyerror!void {
-            _ = context;
-            // Try passing `--fuzz` to `zig build test` and see if it manages to fail this test case!
-            try std.testing.expect(!std.mem.eql(u8, "canyoufindme", input));
-        }
-    };
-    try std.testing.fuzz(Context{}, Context.testOne, .{});
+test "Backend autodetection" {
+    const backend = zigzag.Backend.autoDetect();
+    // Should return a valid backend for the current platform
+    switch (@import("builtin").os.tag) {
+        .linux => try std.testing.expect(backend == .io_uring or backend == .epoll),
+        .macos, .freebsd, .openbsd, .netbsd => try std.testing.expectEqual(zigzag.Backend.kqueue, backend),
+        .windows => try std.testing.expectEqual(zigzag.Backend.iocp, backend),
+        else => {},
+    }
+}
+
+test "EventMask operations" {
+    const mask = zigzag.EventMask{ .read = true, .write = false };
+    try std.testing.expect(mask.any());
+    try std.testing.expect(mask.read);
+    try std.testing.expect(!mask.write);
+
+    const empty = zigzag.EventMask{};
+    try std.testing.expect(!empty.any());
 }

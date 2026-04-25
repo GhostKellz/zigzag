@@ -2,10 +2,11 @@
 
 const std = @import("std");
 const testing = std.testing;
-const grim = @import("grim_editor_support.zig");
+const zigzag = @import("zigzag");
+const grim = zigzag.grim_editor;
 
 test "Debounced file watcher initialization" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -30,7 +31,7 @@ test "File change event types" {
 }
 
 test "LSP event handler" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -54,7 +55,7 @@ test "LSP event handler" {
 }
 
 test "Syntax file watcher" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -62,8 +63,8 @@ test "Syntax file watcher" {
     defer watcher.deinit();
 
     // Add syntax files
-    try watcher.addSyntaxFile("/path/to/syntax.zig");
-    try watcher.addSyntaxFile("/path/to/grammar.tree");
+    try watcher.addSyntaxFile("syntax.zig");
+    try watcher.addSyntaxFile("grammar.tree");
 
     try testing.expectEqual(@as(usize, 2), watcher.syntax_paths.items.len);
 

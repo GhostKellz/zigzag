@@ -1,5 +1,8 @@
 //! macOS/BSD kqueue backend for zigzag event loop
-//! Provides efficient I/O multiplexing using the kqueue API
+//! Status: Production-ready
+//!
+//! Provides efficient I/O multiplexing using the kqueue API.
+//! Supports file descriptor watching, one-shot timers, and recurring timers.
 
 const std = @import("std");
 const posix = std.posix;
@@ -32,7 +35,11 @@ pub const KqueueBackend = if (supports_kqueue) struct {
             return error.PlatformNotSupported;
         }
 
-        const kqueue_fd = try posix.kqueue();
+        // Use libc kqueue() function for cross-compilation compatibility
+        const kqueue_fd = c.kqueue();
+        if (kqueue_fd < 0) {
+            return posix.unexpectedErrno(@enumFromInt(c._errno().*));
+        }
         errdefer std.Io.Threaded.closeFd(kqueue_fd);
 
         var timer_map = std.AutoHashMap(u32, void).init(allocator);
@@ -82,7 +89,10 @@ pub const KqueueBackend = if (supports_kqueue) struct {
                 .data = 0,
                 .udata = 0,
             };
-            _ = std.c.kevent(self.kqueue_fd, &kevent, 1, null, 0, null);
+            const result = std.c.kevent(self.kqueue_fd, &kevent, 1, null, 0, null);
+            if (result < 0) {
+                return error.KQueueRegistrationFailed;
+            }
         }
 
         if (filters.write) {
@@ -94,7 +104,22 @@ pub const KqueueBackend = if (supports_kqueue) struct {
                 .data = 0,
                 .udata = 0,
             };
-            _ = std.c.kevent(self.kqueue_fd, &kevent, 1, null, 0, null);
+            const result = std.c.kevent(self.kqueue_fd, &kevent, 1, null, 0, null);
+            if (result < 0) {
+                // If we already added read filter, try to clean it up
+                if (filters.read) {
+                    const cleanup = c.Kevent{
+                        .ident = @intCast(fd),
+                        .filter = c.EVFILT.READ,
+                        .flags = c.EV.DELETE,
+                        .fflags = 0,
+                        .data = 0,
+                        .udata = 0,
+                    };
+                    _ = std.c.kevent(self.kqueue_fd, &cleanup, 1, null, 0, null);
+                }
+                return error.KQueueRegistrationFailed;
+            }
         }
     }
 
@@ -107,6 +132,17 @@ pub const KqueueBackend = if (supports_kqueue) struct {
     }
 
     /// Remove file descriptor from kqueue
+    ///
+    /// Uses best-effort cleanup semantics. This intentionally ignores kevent
+    /// errors because:
+    /// 1. The filter may not exist (only read or write was registered)
+    /// 2. The fd may already be closed (which auto-removes from kqueue)
+    /// 3. This is a cleanup path where best-effort removal is acceptable
+    ///
+    /// Edge cases handled:
+    /// - fd closed before removeWatch: kqueue auto-removes, EV_DELETE returns ENOENT
+    /// - Timer cancelled while callback pending: kqueue handles gracefully
+    /// - kqueue fd closed during poll: returns EBADF, caught by poll error handling
     pub fn removeFd(self: *KqueueBackend, fd: i32) !void {
         // Remove read filter
         const read_kevent = c.Kevent{
@@ -128,7 +164,7 @@ pub const KqueueBackend = if (supports_kqueue) struct {
             .udata = 0,
         };
 
-        // Try to remove both filters - ignore errors if they don't exist
+        // Best-effort removal - errors are expected if filter wasn't registered
         _ = std.c.kevent(self.kqueue_fd, &read_kevent, 1, null, 0, null);
         _ = std.c.kevent(self.kqueue_fd, &write_kevent, 1, null, 0, null);
     }
@@ -252,4 +288,129 @@ test "EventMask to kqueue conversion" {
 
     try std.testing.expect(filters.read);
     try std.testing.expect(filters.write);
+}
+
+test "kqueue add/remove fd watch" {
+    if (!supports_kqueue) return error.SkipZigTest;
+
+    const allocator = std.testing.allocator;
+    var backend = try KqueueBackend.init(allocator);
+    defer backend.deinit();
+
+    // Create a pipe for testing
+    var fds: [2]c_int = undefined;
+    if (c.pipe(&fds) != 0) return error.PipeCreationFailed;
+    defer {
+        _ = c.close(fds[0]);
+        _ = c.close(fds[1]);
+    }
+
+    // Add read watch on read end of pipe
+    try backend.addFd(fds[0], EventMask{ .read = true });
+
+    // Remove the watch
+    try backend.removeFd(fds[0]);
+}
+
+test "kqueue pipe readability event" {
+    if (!supports_kqueue) return error.SkipZigTest;
+
+    const allocator = std.testing.allocator;
+    var backend = try KqueueBackend.init(allocator);
+    defer backend.deinit();
+
+    // Create a pipe
+    var fds: [2]c_int = undefined;
+    if (c.pipe(&fds) != 0) return error.PipeCreationFailed;
+    defer {
+        _ = c.close(fds[0]);
+        _ = c.close(fds[1]);
+    }
+
+    // Watch read end for readability
+    try backend.addFd(fds[0], EventMask{ .read = true });
+
+    // Write data to pipe
+    const msg = "test";
+    _ = c.write(fds[1], msg.ptr, msg.len);
+
+    // Poll should return read event
+    var events: [16]Event = undefined;
+    const count = try backend.poll(&events, 100);
+    try std.testing.expect(count >= 1);
+    try std.testing.expectEqual(EventType.read_ready, events[0].type);
+    try std.testing.expectEqual(fds[0], events[0].fd);
+}
+
+test "kqueue one-shot timer" {
+    if (!supports_kqueue) return error.SkipZigTest;
+
+    const allocator = std.testing.allocator;
+    var backend = try KqueueBackend.init(allocator);
+    defer backend.deinit();
+
+    // Add 50ms one-shot timer
+    try backend.addTimer(42, 50);
+
+    // Poll with 200ms timeout - should get timer event
+    var events: [16]Event = undefined;
+    const count = try backend.poll(&events, 200);
+    try std.testing.expect(count >= 1);
+    try std.testing.expectEqual(EventType.timer_expired, events[0].type);
+    try std.testing.expectEqual(@as(u32, 42), events[0].data.timer_id);
+}
+
+test "kqueue recurring timer" {
+    if (!supports_kqueue) return error.SkipZigTest;
+
+    const allocator = std.testing.allocator;
+    var backend = try KqueueBackend.init(allocator);
+    defer backend.deinit();
+
+    // Add 30ms recurring timer
+    try backend.addRecurringTimer(99, 30);
+
+    // Should get multiple timer events
+    var events: [16]Event = undefined;
+    var timer_count: usize = 0;
+
+    for (0..3) |_| {
+        const count = try backend.poll(&events, 100);
+        for (0..count) |i| {
+            if (events[i].type == .timer_expired and events[i].data.timer_id == 99) {
+                timer_count += 1;
+            }
+        }
+    }
+
+    // Should have received at least 2 timer events
+    try std.testing.expect(timer_count >= 2);
+
+    // Cancel the timer
+    try backend.cancelTimer(99);
+}
+
+test "kqueue timer cancellation" {
+    if (!supports_kqueue) return error.SkipZigTest;
+
+    const allocator = std.testing.allocator;
+    var backend = try KqueueBackend.init(allocator);
+    defer backend.deinit();
+
+    // Add a timer
+    try backend.addTimer(123, 500);
+
+    // Cancel it immediately
+    try backend.cancelTimer(123);
+
+    // Poll with short timeout - should NOT get timer event
+    var events: [16]Event = undefined;
+    const count = try backend.poll(&events, 50);
+
+    // No timer events should be received
+    for (0..count) |i| {
+        if (events[i].type == .timer_expired and events[i].data.timer_id == 123) {
+            return error.TimerNotCancelled;
+        }
+    }
 }

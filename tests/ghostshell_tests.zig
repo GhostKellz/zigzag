@@ -3,7 +3,7 @@
 const std = @import("std");
 const testing = std.testing;
 const zigzag = @import("zigzag");
-const ghostshell = @import("ghostshell_optimizations.zig");
+const ghostshell = zigzag.ghostshell;
 
 test "Terminal timing initialization" {
     const timing = ghostshell.TerminalTiming.init(120);
@@ -17,7 +17,7 @@ test "Terminal timing initialization" {
 }
 
 test "PTY event batcher" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -43,7 +43,7 @@ test "PTY event batcher" {
 }
 
 test "PTY batcher automatic flush" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -61,7 +61,7 @@ test "PTY batcher automatic flush" {
 }
 
 test "Render buffer pool" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -100,7 +100,7 @@ test "Terminal event priorities" {
 }
 
 test "Ghostshell extensions integration" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -120,7 +120,7 @@ test "Ghostshell extensions integration" {
 }
 
 test "Performance statistics" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -134,7 +134,7 @@ test "Performance statistics" {
     ext.frames_rendered = 600;
     ext.events_processed = 6000;
 
-    std.time.sleep(std.time.ns_per_s); // Wait 1 second
+    ext.last_stats_time -= std.time.ns_per_s;
 
     const stats = ext.getStats();
 

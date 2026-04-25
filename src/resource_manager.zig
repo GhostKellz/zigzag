@@ -439,7 +439,7 @@ pub fn cleanupStaleTimers(resource_manager: *ResourceManager) !void {
 }
 
 test "Resource manager basic functionality" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -466,7 +466,7 @@ test "Resource manager basic functionality" {
 }
 
 test "Leak detection" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -485,7 +485,7 @@ test "Leak detection" {
 }
 
 test "Cleanup scheduler" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 

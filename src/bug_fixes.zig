@@ -558,7 +558,7 @@ pub const PlatformFixer = struct {
 };
 
 test "Bug tracker functionality" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -577,7 +577,7 @@ test "Bug tracker functionality" {
 }
 
 test "Memory leak detection" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -596,7 +596,7 @@ test "Memory leak detection" {
 }
 
 test "Platform validation" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 

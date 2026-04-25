@@ -7,6 +7,7 @@ const build_options = @import("build_options");
 const EventLoop = @import("root.zig").EventLoop;
 const Event = @import("root.zig").Event;
 const EventType = @import("root.zig").EventType;
+const Watch = @import("root.zig").Watch;
 
 // Conditional zsync import
 const zsync = if (build_options.enable_zsync) @import("zsync") else void;
@@ -67,6 +68,10 @@ pub const AsyncOperation = struct {
     result: AsyncResult = .pending,
     frame: ?*AsyncFrame = null,
     callback: ?*const fn (*AsyncOperation) void = null,
+    timer_callback: ?*const fn () void = null,
+    timer: ?@import("root.zig").Timer = null,
+    watch: ?*const Watch = null,
+    runtime: ?*AsyncRuntime = null,
 
     const OperationType = enum {
         read,
@@ -135,6 +140,7 @@ pub const AsyncRuntime = struct {
         // Cancel all pending operations
         for (self.pending_operations.items) |op| {
             op.cancel();
+            self.cleanupOperation(op);
         }
 
         // Cancel all active frames
@@ -152,32 +158,51 @@ pub const AsyncRuntime = struct {
         }
     }
 
+    fn cleanupOperation(self: *AsyncRuntime, operation: *AsyncOperation) void {
+        if (operation.watch) |watch| {
+            self.event_loop.removeFd(watch);
+            operation.watch = null;
+        }
+        if (operation.timer) |*timer| {
+            self.event_loop.cancelTimer(timer);
+            operation.timer = null;
+        }
+        self.allocator.destroy(operation);
+    }
+
     /// Submit an async operation
     pub fn submitOperation(self: *AsyncRuntime, operation: *AsyncOperation) !void {
+        operation.runtime = self;
         try self.pending_operations.append(operation);
 
         // Add to event loop based on operation type
         switch (operation.operation_type) {
             .read => {
                 const watch = try self.event_loop.addFd(operation.fd, .{ .read = true });
+                operation.watch = watch;
+                self.event_loop.setUserData(watch, operation);
                 self.event_loop.setCallback(watch, asyncReadCallback);
             },
             .write => {
                 const watch = try self.event_loop.addFd(operation.fd, .{ .write = true });
+                operation.watch = watch;
+                self.event_loop.setUserData(watch, operation);
                 self.event_loop.setCallback(watch, asyncWriteCallback);
             },
             .timer => {
-                // Timer operations handled differently
                 const timer_callback = struct {
                     pub fn onTimer(user_data: ?*anyopaque) void {
                         if (user_data) |data| {
                             const op = @as(*AsyncOperation, @ptrCast(@alignCast(data)));
+                            if (op.timer_callback) |callback| {
+                                callback();
+                            }
                             op.complete(0, null);
                         }
                     }
                 }.onTimer;
 
-                _ = try self.event_loop.addTimer(1000, timer_callback); // Example timer
+                operation.timer = try self.event_loop.addTimerWithUserData(operation.offset, timer_callback, operation);
             },
             else => {
                 return error.UnsupportedOperation;
@@ -193,7 +218,8 @@ pub const AsyncRuntime = struct {
             switch (op.result) {
                 .ready, .cancelled => {
                     // Remove completed operation
-                    _ = self.pending_operations.swapRemove(i);
+                    const completed = self.pending_operations.swapRemove(i);
+                    self.cleanupOperation(completed);
                 },
                 .pending => {
                     i += 1;
@@ -258,18 +284,17 @@ pub const AsyncRuntime = struct {
 
     /// Async read operation
     pub fn asyncRead(self: *AsyncRuntime, fd: i32, buffer: []u8) !AsyncResult {
-        var operation = AsyncOperation.init(.read, fd, buffer);
-        try self.submitOperation(&operation);
-
-        // For now, return pending - in a real implementation,
-        // this would integrate with the async machinery
+        const operation = try self.allocator.create(AsyncOperation);
+        operation.* = AsyncOperation.init(.read, fd, buffer);
+        try self.submitOperation(operation);
         return AsyncResult.pending;
     }
 
     /// Async write operation
     pub fn asyncWrite(self: *AsyncRuntime, fd: i32, buffer: []u8) !AsyncResult {
-        var operation = AsyncOperation.init(.write, fd, buffer);
-        try self.submitOperation(&operation);
+        const operation = try self.allocator.create(AsyncOperation);
+        operation.* = AsyncOperation.init(.write, fd, buffer);
+        try self.submitOperation(operation);
         return AsyncResult.pending;
     }
 
@@ -282,18 +307,52 @@ pub const AsyncRuntime = struct {
 };
 
 /// Async callbacks for event loop integration
-fn asyncReadCallback(watch: *const @import("root.zig").Watch, event: Event) void {
-    _ = watch;
-    _ = event;
-    // Find the corresponding async operation and complete it
-    // This is a simplified implementation
+fn asyncReadCallback(watch: *const Watch, event: Event) void {
+    if (event.type != .read_ready and event.type != .hangup and event.type != .io_error) {
+        return;
+    }
+
+    const user_data = watch.user_data orelse return;
+    const operation = @as(*AsyncOperation, @ptrCast(@alignCast(user_data)));
+    if (operation.result != .pending) return;
+
+    switch (event.type) {
+        .hangup => operation.complete(0, error.EndOfStream),
+        .io_error => operation.complete(0, error.InputOutput),
+        .read_ready => {
+            const bytes_read = std.posix.read(operation.fd, operation.buffer) catch |err| {
+                if (err == error.WouldBlock) return;
+                operation.complete(0, err);
+                return;
+            };
+            operation.complete(bytes_read, null);
+        },
+        else => unreachable,
+    }
 }
 
-fn asyncWriteCallback(watch: *const @import("root.zig").Watch, event: Event) void {
-    _ = watch;
-    _ = event;
-    // Find the corresponding async operation and complete it
-    // This is a simplified implementation
+fn asyncWriteCallback(watch: *const Watch, event: Event) void {
+    if (event.type != .write_ready and event.type != .hangup and event.type != .io_error) {
+        return;
+    }
+
+    const user_data = watch.user_data orelse return;
+    const operation = @as(*AsyncOperation, @ptrCast(@alignCast(user_data)));
+    if (operation.result != .pending) return;
+
+    switch (event.type) {
+        .hangup => operation.complete(0, error.BrokenPipe),
+        .io_error => operation.complete(0, error.InputOutput),
+        .write_ready => {
+            const bytes_written = std.posix.write(operation.fd, operation.buffer) catch |err| {
+                if (err == error.WouldBlock) return;
+                operation.complete(0, err);
+                return;
+            };
+            operation.complete(bytes_written, null);
+        },
+        else => unreachable,
+    }
 }
 
 /// Async-friendly timer implementation
@@ -311,11 +370,11 @@ pub const AsyncTimer = struct {
 
     /// Sleep for specified duration (async)
     pub fn sleep(self: *AsyncTimer) !void {
-        var operation = AsyncOperation.init(.timer, -1, &[_]u8{});
-        try self.runtime.submitOperation(&operation);
-
-        // In a real implementation, this would suspend the current async function
-        // and resume when the timer expires
+        const operation = try self.runtime.allocator.create(AsyncOperation);
+        operation.* = AsyncOperation.init(.timer, -1, &[_]u8{});
+        operation.offset = self.duration_ms;
+        operation.timer_callback = self.callback;
+        try self.runtime.submitOperation(operation);
     }
 
     /// Set a callback timer
@@ -415,8 +474,6 @@ test "Async runtime basic operations" {
 }
 
 test "Async operation lifecycle" {
-    const allocator = std.testing.allocator;
-
     var operation = AsyncOperation.init(.read, 1, &[_]u8{0} ** 1024);
     try std.testing.expect(operation.operation_type == .read);
     try std.testing.expect(operation.fd == 1);
@@ -446,6 +503,6 @@ test "Async timer" {
     var runtime = try AsyncRuntime.init(allocator, &loop);
     defer runtime.deinit();
 
-    var timer = AsyncTimer.init(&runtime, 100);
+    const timer = AsyncTimer.init(&runtime, 100);
     try std.testing.expectEqual(@as(u64, 100), timer.duration_ms);
 }

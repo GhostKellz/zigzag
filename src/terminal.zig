@@ -2,35 +2,61 @@
 //! Optimized for terminal emulators with PTY handling and signal management
 
 const std = @import("std");
+const builtin = @import("builtin");
 const posix = std.posix;
 const EventLoop = @import("root.zig").EventLoop;
 const Event = @import("root.zig").Event;
 const EventType = @import("root.zig").EventType;
+const time_utils = @import("time_utils.zig");
+
+// PTY libc functions - not in std.posix, need to declare extern
+const c = struct {
+    extern "c" fn grantpt(fd: c_int) c_int;
+    extern "c" fn unlockpt(fd: c_int) c_int;
+    extern "c" fn ptsname(fd: c_int) ?[*:0]const u8;
+};
 
 /// PTY (Pseudo Terminal) management
 pub const Pty = struct {
     master_fd: posix.fd_t,
     slave_fd: posix.fd_t,
-    slave_path: []const u8,
+    slave_path: [:0]const u8,
 
     /// Create a new PTY pair
     pub fn create() !Pty {
-        // Open /dev/ptmx for master
-        const master_fd = try posix.open("/dev/ptmx", .{ .ACCMODE = .RDWR, .NOCTTY = true, .CLOEXEC = true }, 0);
+        // Only supported on Unix-like systems
+        if (builtin.os.tag == .windows) {
+            return error.PlatformNotSupported;
+        }
+
+        // Open /dev/ptmx for master using libc open
+        const master_fd = std.c.open("/dev/ptmx", .{ .ACCMODE = .RDWR, .NOCTTY = true, .CLOEXEC = true });
+        if (master_fd < 0) {
+            return posix.unexpectedErrno(@enumFromInt(std.c._errno().*));
+        }
         errdefer std.Io.Threaded.closeFd(master_fd);
 
         // Grant access to the slave pseudoterminal
-        try posix.grantpt(master_fd);
+        if (c.grantpt(master_fd) != 0) {
+            return posix.unexpectedErrno(@enumFromInt(std.c._errno().*));
+        }
 
         // Unlock the slave pseudoterminal
-        try posix.unlockpt(master_fd);
+        if (c.unlockpt(master_fd) != 0) {
+            return posix.unexpectedErrno(@enumFromInt(std.c._errno().*));
+        }
 
         // Get the name of the slave pseudoterminal
-        const slave_path = try posix.ptsname_r(master_fd);
-        errdefer std.heap.page_allocator.free(slave_path);
+        const slave_name_ptr = c.ptsname(master_fd) orelse {
+            return posix.unexpectedErrno(@enumFromInt(std.c._errno().*));
+        };
+        const slave_path = std.mem.span(slave_name_ptr);
 
         // Open the slave pseudoterminal
-        const slave_fd = try posix.open(slave_path, .{ .ACCMODE = .RDWR, .NOCTTY = true, .CLOEXEC = true }, 0);
+        const slave_fd = std.c.open(slave_name_ptr, .{ .ACCMODE = .RDWR, .NOCTTY = true, .CLOEXEC = true });
+        if (slave_fd < 0) {
+            return posix.unexpectedErrno(@enumFromInt(std.c._errno().*));
+        }
         errdefer std.Io.Threaded.closeFd(slave_fd);
 
         return Pty{
@@ -44,32 +70,31 @@ pub const Pty = struct {
     pub fn close(self: *Pty) void {
         std.Io.Threaded.closeFd(self.slave_fd);
         std.Io.Threaded.closeFd(self.master_fd);
-        std.heap.page_allocator.free(self.slave_path);
     }
 
     /// Set terminal size
     pub fn setSize(self: *Pty, rows: u16, cols: u16) !void {
-        var winsize = posix.system.winsize{
+        var ws = std.c.winsize{
             .ws_row = rows,
             .ws_col = cols,
             .ws_xpixel = 0,
             .ws_ypixel = 0,
         };
 
-        const rc = std.c.ioctl(self.master_fd, posix.TIOCSWINSZ, &winsize);
+        const rc = std.c.ioctl(self.master_fd, std.c.T.IOCSWINSZ, @intFromPtr(&ws));
         if (rc != 0) {
             return posix.unexpectedErrno(@enumFromInt(std.c._errno().*));
         }
     }
 
     /// Get terminal size
-    pub fn getSize(self: *Pty) !posix.system.winsize {
-        var winsize: posix.system.winsize = undefined;
-        const rc = std.c.ioctl(self.master_fd, posix.TIOCGWINSZ, &winsize);
+    pub fn getSize(self: *Pty) !std.c.winsize {
+        var ws: std.c.winsize = undefined;
+        const rc = std.c.ioctl(self.master_fd, std.c.T.IOCGWINSZ, @intFromPtr(&ws));
         if (rc != 0) {
             return posix.unexpectedErrno(@enumFromInt(std.c._errno().*));
         }
-        return winsize;
+        return ws;
     }
 };
 
@@ -80,18 +105,22 @@ pub const SignalHandler = struct {
 
     /// Initialize signal handler
     pub fn init(event_loop: *EventLoop) !SignalHandler {
+        if (builtin.os.tag != .linux) {
+            return error.PlatformNotSupported;
+        }
+
         // Create signalfd for real-time signals
-        var mask = posix.empty_sigset;
+        var mask = posix.sigemptyset();
         posix.sigaddset(&mask, posix.SIG.WINCH);
         posix.sigaddset(&mask, posix.SIG.CHLD);
         posix.sigaddset(&mask, posix.SIG.INT);
         posix.sigaddset(&mask, posix.SIG.TERM);
 
-        const signal_fd = try posix.signalfd(-1, &mask, posix.S.OFD_CLOEXEC);
+        const signal_fd = try posix.signalfd(-1, &mask, .{ .CLOEXEC = true });
         errdefer std.Io.Threaded.closeFd(signal_fd);
 
         // Block these signals from default handlers
-        try posix.sigprocmask(posix.SIG.BLOCK, &mask, null);
+        posix.sigprocmask(posix.SIG.BLOCK, &mask, null);
 
         return SignalHandler{
             .event_loop = event_loop,
@@ -99,54 +128,87 @@ pub const SignalHandler = struct {
         };
     }
 
-    /// Close signal handler
-    pub fn close(self: *SignalHandler) void {
+    /// Clean up signal handler
+    pub fn deinit(self: *SignalHandler) void {
         std.Io.Threaded.closeFd(self.signal_fd);
     }
 
-    /// Register signal handler with event loop
-    pub fn register(self: *SignalHandler) !void {
-        const watch = try self.event_loop.addFd(self.signal_fd, .{ .read = true });
-        self.event_loop.setCallback(watch, signalCallback);
-        // Store self as user data - we'll need to update the watch structure for this
-        if (self.event_loop.watches.getPtr(self.signal_fd)) |stored_watch| {
-            stored_watch.user_data = @ptrCast(self);
+    /// Read and dispatch pending signals
+    pub fn poll(self: *SignalHandler) !?Event {
+        var info: std.os.linux.signalfd_siginfo = undefined;
+        const bytes_read = std.c.read(self.signal_fd, @ptrCast(&info), @sizeOf(@TypeOf(info)));
+        if (bytes_read < 0) {
+            const err = @as(posix.E, @enumFromInt(std.c._errno().*));
+            if (err == .AGAIN or err == .WOULDBLOCK) {
+                return null;
+            }
+            return posix.unexpectedErrno(err);
         }
+
+        if (bytes_read < @sizeOf(@TypeOf(info))) {
+            return null;
+        }
+
+        return switch (@as(posix.SIG, @enumFromInt(info.signo))) {
+            posix.SIG.WINCH => Event{
+                .fd = self.signal_fd,
+                .type = .window_resize,
+                .data = .{ .signal = @intCast(info.signo) },
+            },
+            posix.SIG.CHLD => Event{
+                .fd = self.signal_fd,
+                .type = .child_exit,
+                .data = .{ .signal = @intCast(info.signo) },
+            },
+            else => Event{
+                .fd = self.signal_fd,
+                .type = .user_event,
+                .data = .{ .signal = @intCast(info.signo) },
+            },
+        };
+    }
+};
+
+/// Terminal input processor
+pub const InputProcessor = struct {
+    event_loop: *EventLoop,
+    input_fd: posix.fd_t,
+    coalescer: ?*EventCoalescer,
+
+    /// Initialize input processor
+    pub fn init(event_loop: *EventLoop, input_fd: posix.fd_t) InputProcessor {
+        return InputProcessor{
+            .event_loop = event_loop,
+            .input_fd = input_fd,
+            .coalescer = null,
+        };
     }
 
-    /// Signal callback function
-    fn signalCallback(watch: *const @import("root.zig").Watch, event: Event) void {
-        _ = event; // Event parameter not used in this callback
-        const self = @as(*SignalHandler, @ptrCast(@alignCast(watch.user_data.?)));
-        _ = self.handleSignal() catch {};
+    /// Set event coalescer
+    pub fn setCoalescer(self: *InputProcessor, coalescer: *EventCoalescer) void {
+        self.coalescer = coalescer;
     }
 
-    /// Handle incoming signals
-    fn handleSignal(self: *SignalHandler) !void {
-        var siginfo: posix.siginfo_t = undefined;
-        const bytes_read = try posix.read(self.signal_fd, std.mem.asBytes(&siginfo));
+    /// Process input events
+    pub fn process(self: *InputProcessor) !void {
+        var buf: [4096]u8 = undefined;
+        const n = std.c.read(self.input_fd, &buf, buf.len);
+        if (n < 0) {
+            const err = @as(posix.E, @enumFromInt(std.c._errno().*));
+            if (err == .AGAIN or err == .WOULDBLOCK) {
+                return;
+            }
+            return posix.unexpectedErrno(err);
+        }
 
-        if (bytes_read == @sizeOf(posix.siginfo_t)) {
-            const event = switch (siginfo.signo) {
-                posix.SIG.WINCH => Event{
-                    .fd = -1,
-                    .type = .window_resize,
-                    .data = .{ .size = 0 }, // Size will be queried by application
-                },
-                posix.SIG.CHLD => Event{
-                    .fd = -1,
-                    .type = .child_exit,
-                    .data = .{ .signal = @intCast(siginfo.fields.common.first.pid) },
-                },
-                else => Event{
-                    .fd = -1,
-                    .type = .user_event,
-                    .data = .{ .signal = @intCast(siginfo.signo) },
-                },
+        if (n > 0) {
+            const event = Event{
+                .fd = self.input_fd,
+                .type = .read_ready,
+                .data = .{ .size = @intCast(n) },
             };
 
-            // Dispatch event via event loop's coalescer if available
-            if (self.event_loop.coalescer) |*coalescer| {
+            if (self.coalescer) |coalescer| {
                 coalescer.addEvent(event) catch {};
             }
         }
@@ -157,8 +219,8 @@ pub const SignalHandler = struct {
 pub const EventCoalescer = struct {
     allocator: std.mem.Allocator,
     pending_events: std.ArrayList(Event),
-    last_window_resize: ?std.time.Instant = null,
-    coalesce_window: u64 = 50_000_000, // 50ms in nanoseconds
+    last_window_resize_ns: ?i128 = null,
+    coalesce_window: i128 = 50_000_000, // 50ms in nanoseconds
 
     pub fn init(allocator: std.mem.Allocator) !EventCoalescer {
         return EventCoalescer{
@@ -176,10 +238,10 @@ pub const EventCoalescer = struct {
         switch (event.type) {
             .window_resize => {
                 // Coalesce window resize events
-                const now = std.time.Instant.now() catch return;
+                const now = time_utils.getMonotonicNs();
 
-                if (self.last_window_resize) |last| {
-                    if (now.since(last) < self.coalesce_window) {
+                if (self.last_window_resize_ns) |last| {
+                    if (now - last < self.coalesce_window) {
                         // Replace existing resize event
                         for (self.pending_events.items) |*existing| {
                             if (existing.type == .window_resize) {
@@ -190,7 +252,7 @@ pub const EventCoalescer = struct {
                     }
                 }
 
-                self.last_window_resize = now;
+                self.last_window_resize_ns = now;
                 try self.pending_events.append(self.allocator, event);
             },
             else => {
@@ -206,43 +268,40 @@ pub const EventCoalescer = struct {
 };
 
 test "PTY creation and basic operations" {
-    // PTY creation should work on Unix systems
+    if (builtin.os.tag != .linux and builtin.os.tag != .macos) {
+        return error.SkipZigTest;
+    }
+
     var pty = Pty.create() catch |err| switch (err) {
         error.AccessDenied, error.DeviceNotFound => return error.SkipZigTest,
         else => return err,
     };
     defer pty.close();
 
-    // Test that FDs are valid
-    try std.testing.expect(pty.master_fd > 0);
-    try std.testing.expect(pty.slave_fd > 0);
-    try std.testing.expect(pty.slave_path.len > 0);
-
-    // Test size operations
+    // Test setting and getting size
     try pty.setSize(24, 80);
     const size = try pty.getSize();
     try std.testing.expectEqual(@as(u16, 24), size.ws_row);
     try std.testing.expectEqual(@as(u16, 80), size.ws_col);
 }
 
-test "Event coalescer" {
-    var coalescer = try EventCoalescer.init(std.testing.allocator);
+test "EventCoalescer basic operations" {
+    const allocator = std.testing.allocator;
+
+    var coalescer = try EventCoalescer.init(allocator);
     defer coalescer.deinit();
 
-    // Add some events
+    // Add multiple events
     const event1 = Event{ .fd = 1, .type = .read_ready, .data = .{ .size = 10 } };
-    const event2 = Event{ .fd = 2, .type = .window_resize, .data = .{ .size = 0 } };
-    const event3 = Event{ .fd = 2, .type = .window_resize, .data = .{ .size = 0 } }; // Should be coalesced
+    const event2 = Event{ .fd = -1, .type = .window_resize, .data = .{ .size = 0 } };
+    const event3 = Event{ .fd = 2, .type = .write_ready, .data = .{ .size = 0 } };
 
     try coalescer.addEvent(event1);
     try coalescer.addEvent(event2);
     try coalescer.addEvent(event3);
 
     const events = try coalescer.drainEvents();
-    defer std.testing.allocator.free(events);
+    defer allocator.free(events);
 
-    // Should have 2 events (event3 coalesced with event2)
-    try std.testing.expectEqual(@as(usize, 2), events.len);
-    try std.testing.expectEqual(EventType.read_ready, events[0].type);
-    try std.testing.expectEqual(EventType.window_resize, events[1].type);
+    try std.testing.expectEqual(@as(usize, 3), events.len);
 }

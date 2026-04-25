@@ -2,53 +2,57 @@
   <img src="assets/icons/zigzag.png" alt="ZigZag Logo" width="200"/>
 </p>
 
-# zigzag
+# ZigZag
 
-[![Zig](https://img.shields.io/badge/Zig-0.16.0--dev-orange?style=flat-square&logo=zig)](https://ziglang.org/)
-[![Event Loop](https://img.shields.io/badge/Event%20Loop-High%20Performance-blue?style=flat-square)](https://github.com/yourusername/zigzag)
-[![Cross Platform](https://img.shields.io/badge/Platform-Linux%20%7C%20macOS%20%7C%20Windows-lightgrey?style=flat-square)](https://github.com/yourusername/zigzag)
-[![Backend](https://img.shields.io/badge/Backend-io__uring%20%7C%20kqueue%20%7C%20IOCP-green?style=flat-square)](https://github.com/yourusername/zigzag)
-[![Zero Copy](https://img.shields.io/badge/Zero%20Copy-I%2FO-red?style=flat-square)](https://github.com/yourusername/zigzag)
-[![Memory Safe](https://img.shields.io/badge/Memory-Safe-brightgreen?style=flat-square)](https://github.com/yourusername/zigzag)
-[![Lock Free](https://img.shields.io/badge/Lock-Free-purple?style=flat-square)](https://github.com/yourusername/zigzag)
-[![libxev Replacement](https://img.shields.io/badge/Replaces-libxev-yellow?style=flat-square)](https://github.com/yourusername/zigzag)
+<p align="center">
+  <img src="https://img.shields.io/badge/Built_with-Zig-F7A41D?style=for-the-badge&logo=zig&logoColor=white" alt="Built with Zig">
+  <img src="https://img.shields.io/badge/Zig-0.17.0--dev-F7A41D?style=for-the-badge&logo=zig&logoColor=white" alt="Zig 0.17.0-dev">
+  <img src="https://img.shields.io/badge/Event_Loop-High_Performance-00ADD8?style=for-the-badge" alt="High Performance">
+  <img src="https://img.shields.io/badge/Platform-Linux_|_macOS_|_BSD_|_Windows-6C757D?style=for-the-badge" alt="Cross Platform">
+  <img src="https://img.shields.io/badge/io__uring-00C853?style=for-the-badge&logo=linux&logoColor=white" alt="io_uring">
+  <img src="https://img.shields.io/badge/kqueue-000000?style=for-the-badge&logo=apple&logoColor=white" alt="kqueue">
+  <img src="https://img.shields.io/badge/epoll-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="epoll">
+  <img src="https://img.shields.io/badge/IOCP-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="IOCP">
+  <img src="https://img.shields.io/badge/Zero_Copy_I/O-DC382D?style=for-the-badge" alt="Zero Copy I/O">
+  <img src="https://img.shields.io/badge/Memory_Safe-4EAA25?style=for-the-badge" alt="Memory Safe">
+  <img src="https://img.shields.io/badge/Lock_Free-9B59B6?style=for-the-badge" alt="Lock Free">
+</p>
 
-**Lightning-fast, cross-platform event loop for Zig - optimized for terminal emulators with seamless async runtime integration.**
+High-performance, cross-platform event loop for Zig. Optimized for terminal emulators with seamless async runtime integration.
 
-> ⚠️ **EXPERIMENTAL LIBRARY - FOR LAB/PERSONAL USE**
-> This is an experimental library under active development. It is intended for research, learning, and personal projects. The API is subject to change and should not be used in production environments without thorough testing and understanding of its limitations.
+> **Note**: Experimental library under active development. API may change.
 
-## ✨ Features
+## Features
 
-- 🚀 **Maximum Performance**: io_uring backend with zero-copy I/O operations
-- 🔄 **Cross-Platform**: Linux (io_uring/epoll), macOS (kqueue), Windows (IOCP)
-- 🖥️ **Terminal Optimized**: Built-in PTY management, signal handling, and event coalescing
-- ⚡ **Async Ready**: Seamless integration with zsync async runtime
-- 🛡️ **Memory Safe**: Zig's compile-time guarantees prevent memory corruption
-- 🔒 **Lock-Free**: Single-threaded design eliminates synchronization overhead
-- 📦 **Drop-in Replacement**: Compatible API with libxev
+- **Multi-backend**: io_uring (Linux 5.1+), epoll (Linux), kqueue (macOS/BSD)
+- **Terminal optimized**: PTY management, signal handling, event coalescing
+- **Async integration**: Experimental zsync runtime helpers
+- **Zero-copy I/O**: High-performance I/O operations with io_uring
+- **Memory safe**: Zig's compile-time guarantees
 
-## 📦 Installation
+## Installation
 
 ### Using Zig Package Manager
 
 ```bash
-# Add zigzag to your project
+# Latest release
+zig fetch --save https://github.com/ghostkellz/zigzag/archive/refs/tags/v0.1.6.tar.gz
+
+# Or main branch
 zig fetch --save https://github.com/ghostkellz/zigzag/archive/refs/heads/main.tar.gz
 ```
 
-Then add to your `build.zig.zon`:
+Add to your `build.zig`:
 
 ```zig
-.dependencies = .{
-    .zigzag = .{
-        .url = "https://github.com/ghostkellz/zigzag/archive/refs/heads/main.zip",
-        .hash = "zigzag-main-hash-here",
-    },
-},
+const zigzag = b.dependency("zigzag", .{
+    .target = target,
+    .optimize = optimize,
+});
+exe.root_module.addImport("zigzag", zigzag.module("zigzag"));
 ```
 
-### Manual Installation
+### Manual
 
 ```bash
 git clone https://github.com/ghostkellz/zigzag.git
@@ -56,14 +60,13 @@ cd zigzag
 zig build
 ```
 
-## 🚀 Quick Start
+## Quick Start
 
 ```zig
 const std = @import("std");
 const zigzag = @import("zigzag");
 
 pub fn main() !void {
-    // Initialize allocator
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
@@ -72,253 +75,52 @@ pub fn main() !void {
     var loop = try zigzag.EventLoop.init(allocator, .{});
     defer loop.deinit();
 
-    // Add a timer
-    const timer = try loop.addTimer(1000, true, timerCallback, null);
-    defer loop.cancelTimer(timer);
-
-    // Run the event loop
-    try loop.run();
-}
-
-fn timerCallback(timer: *const zigzag.Timer) void {
-    std.debug.print("Timer fired!\n", .{});
+    std.debug.print("Backend: {}\n", .{loop.backend});
 }
 ```
 
-## 📚 Usage Examples
+## Backend Selection
 
-### File Descriptor Watching
+ZigZag automatically selects the optimal backend:
 
-```zig
-// Watch a socket for incoming connections
-try loop.addFd(server_fd, .{ .read = true }, acceptCallback, &server);
+| Platform | Primary | Fallback |
+|----------|---------|----------|
+| Linux 5.1+ | io_uring | epoll |
+| Linux <5.1 | epoll | - |
+| macOS/BSD | kqueue | - |
+| Windows | iocp | - |
 
-// Handle incoming connections
-fn acceptCallback(watch: *const zigzag.Watch, event: zigzag.Event) void {
-    if (event.type == .read_ready) {
-        const client_fd = std.posix.accept(event.fd, null, null) catch return;
-        // Handle new connection...
-    }
-}
-```
+**Windows Note:** Windows support remains experimental for `v0.1.6`. The IOCP backend currently covers timers, wake/user events, and WinSock socket I/O. Generic `EventLoop.addFd()` is not supported on Windows, file watching uses a caller-driven polling fallback, and we have not yet run runtime verification on a real Windows host.
 
-### Terminal Signal Handling
-
-```zig
-const terminal = @import("terminal.zig");
-
-// Setup signal handler for window resize
-var signal_handler = try terminal.SignalHandler.init(&loop);
-defer signal_handler.close();
-try signal_handler.register();
-
-// Event coalescing prevents resize event spam
-var coalescer = try terminal.EventCoalescer.init(allocator);
-defer coalescer.deinit();
-```
-
-### Timer Management
-
-```zig
-// One-shot timer
-const timeout = try loop.addTimer(5000, false, timeoutCallback, user_data);
-
-// Recurring timer
-const heartbeat = try loop.addTimer(1000, true, heartbeatCallback, null);
-
-// Cancel when done
-defer loop.cancelTimer(timeout);
-defer loop.cancelTimer(heartbeat);
-```
-
-## 🏗️ Architecture
-
-### Backend Selection
-
-zigzag automatically selects the optimal backend for your platform:
-
-| Platform | Primary Backend | Fallback | Performance |
-|----------|----------------|----------|-------------|
-| Linux 5.1+ | io_uring | epoll | 🚀 Maximum |
-| Linux <5.1 | epoll | - | ⚡ High |
-| macOS | kqueue | - | ⚡ High |
-| Windows | IOCP | - | 🚀 Maximum |
-
-### Event Processing
-
-```zig
-// Non-blocking poll
-var events: [64]zigzag.Event = undefined;
-const count = try loop.poll(&events, 10); // 10ms timeout
-
-// Process events
-for (events[0..count]) |event| {
-    switch (event.type) {
-        .read_ready => handleRead(event),
-        .write_ready => handleWrite(event),
-        .timer_expired => handleTimer(event),
-        .window_resize => handleResize(event),
-        else => {},
-    }
-}
-```
-
-## 🔧 API Reference
-
-### Core Types
-
-- **`EventLoop`**: Main event loop structure
-- **`Event`**: I/O or timer event
-- **`EventMask`**: File descriptor event mask
-- **`Timer`**: Timer handle
-- **`Watch`**: File descriptor watch handle
-
-### Key Methods
-
-- **`EventLoop.init()`**: Create event loop
-- **`addFd()`**: Watch file descriptor
-- **`addTimer()`**: Schedule timer
-- **`poll()`**: Non-blocking event polling
-- **`run()`**: Run event loop
-
-See [`docs/API.md`](docs/API.md) for complete API documentation.
-
-## 🧪 Testing
+## Build Options
 
 ```bash
-# Run all tests
-zig test src/root.zig
+# Disable specific backends
+zig build -Dio_uring=false
+zig build -Depoll=false
+zig build -Dkqueue=false
 
-# Run terminal tests
-zig test src/terminal.zig
-
-# Run with specific backend
-zig test src/root.zig -Dbackend=io_uring
+# Enable debug events
+zig build -Ddebug_events=true
 ```
 
-## 📊 Performance
+## Documentation
 
-zigzag is designed for maximum performance:
+- [API Reference](docs/api/README.md)
+- [Quick Start Guide](docs/guides/quickstart.md)
+- [Performance](docs/performance/README.md)
 
-- **Zero-copy I/O** with io_uring
-- **Event batching** reduces system calls
-- **Timer wheel** for O(1) timer operations
-- **Event coalescing** prevents event spam
-- **Single-threaded** design eliminates locks
+## Requirements
 
-### Benchmarks
+- Zig 0.17.0-dev or later
+- Linux 2.6.27+ (epoll) or 5.1+ (io_uring)
+- macOS 10.12+ (kqueue)
+- Windows 11 (IOCP)
 
-*Coming soon - performance comparison with libxev*
+## Contributing
 
-## 🤝 Integration
+See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
-### With zsync (Async Runtime)
+## License
 
-```zig
-// zigzag integrates seamlessly with zsync
-const zsync = @import("zsync");
-
-// Create async task that uses zigzag events
-const task = try zsync.spawn(async {
-    while (true) {
-        const event = try zigzag.waitForEvent();
-        // Process event asynchronously
-    }
-});
-```
-
-### Terminal Emulator Integration
-
-```zig
-// Perfect for terminal emulators
-const terminal = @import("terminal.zig");
-
-// PTY management
-var pty = try terminal.Pty.create();
-defer pty.close();
-
-// Signal handling for resize/child events
-var signals = try terminal.SignalHandler.init(&loop);
-try signals.register();
-
-// Coalesce resize events
-var coalescer = terminal.EventCoalescer.init(allocator);
-```
-
-## 🛠️ Building
-
-### Development Build
-
-```bash
-git clone https://github.com/ghostkellz/zigzag.git
-cd zigzag
-
-# Build library
-zig build
-
-# Run tests
-zig test src/root.zig
-
-# Build examples
-zig build examples
-```
-
-### Integration in Your Project
-
-```zig
-// build.zig
-const zigzag = b.dependency("zigzag", .{});
-exe.root_module.addImport("zigzag", zigzag.module("root"));
-```
-
-## 📋 Requirements
-
-- **Zig**: 0.16.0-dev or later
-- **Linux**: 2.6.27+ (epoll), 5.1+ (io_uring)
-- **macOS**: 10.12+ (kqueue)
-- **Windows**: Coming soon (IOCP)
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Add tests for new functionality
-4. Ensure all tests pass
-5. Submit a pull request
-
-### Development Setup
-
-```bash
-git clone https://github.com/ghostkellz/zigzag.git
-cd zigzag
-
-# Install development dependencies
-zig fetch --save https://github.com/ghostkellz/zsync/archive/main.zip
-
-# Run tests
-zig test src/
-```
-
-## 📄 License
-
-Licensed under the MIT License. See [LICENSE](LICENSE) for details.
-
-## 🙏 Acknowledgments
-
-- Inspired by libxev and libev
-- Built with the amazing Zig programming language
-- Part of the Ghostshell terminal ecosystem
-
-## 📞 Support
-
-- **Issues**: [GitHub Issues](https://github.com/ghostkellz/zigzag/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/ghostkellz/zigzag/discussions)
-- **Documentation**: [`docs/`](docs/) directory
-
----
-
-<p align="center">
-  <strong>⚡ Built with Zig</strong>
-</p>
-
-
+MIT License. See [LICENSE](LICENSE).

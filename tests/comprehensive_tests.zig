@@ -4,6 +4,7 @@
 const std = @import("std");
 const testing = std.testing;
 const zigzag = @import("zigzag");
+const test_utils = @import("test_utils.zig");
 
 test "Backend auto-detection" {
     const backend = zigzag.Backend.autoDetect();
@@ -24,7 +25,7 @@ test "Backend auto-detection" {
 }
 
 test "EventLoop initialization and cleanup" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -37,7 +38,7 @@ test "EventLoop initialization and cleanup" {
 }
 
 test "EventLoop stop and reset" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -55,7 +56,9 @@ test "EventLoop stop and reset" {
 }
 
 test "File descriptor watching" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    if (comptime !test_utils.supportsPosixPipe()) return error.SkipZigTest;
+
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -63,11 +66,8 @@ test "File descriptor watching" {
     defer loop.deinit();
 
     // Create pipe for testing
-    var pipe: [2]i32 = undefined;
-    const rc = std.os.linux.pipe(&pipe);
-    if (rc != 0) return error.PipeCreationFailed;
-    defer std.posix.close(pipe[0]);
-    defer std.posix.close(pipe[1]);
+    const pipe = test_utils.createPipe() catch return error.SkipZigTest;
+    defer test_utils.closePipe(pipe);
 
     // Add watch for read end
     const watch = try loop.addFd(pipe[0], .{ .read = true });
@@ -79,7 +79,7 @@ test "File descriptor watching" {
 
     // Write some data
     const test_data = "test";
-    _ = try std.posix.write(pipe[1], test_data);
+    _ = try test_utils.writeToFd(pipe[1], test_data);
 
     // Poll for events (should detect readable data)
     var events: [10]zigzag.Event = undefined;
@@ -94,7 +94,7 @@ test "File descriptor watching" {
 }
 
 test "Timer functionality" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -122,15 +122,11 @@ test "Timer functionality" {
     try testing.expect(loop.timers.contains(timer.id));
 
     // Run event loop briefly
-    const ts_start = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-    const start = @as(i64, @intCast(ts_start.sec * 1000 + @divTrunc(ts_start.nsec, 1_000_000)));
-    while ((blk: {
-        const ts_now = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-        break :blk @as(i64, @intCast(ts_now.sec * 1000 + @divTrunc(ts_now.nsec, 1_000_000)));
-    }) - start < 200) {
+    const start = test_utils.getMonotonicMs();
+    while (test_utils.getMonotonicMs() - start < 200) {
         _ = try loop.tick();
         if (timer_fired) break;
-        std.time.sleep(10_000_000); // 10ms
+        test_utils.sleepNs(10_000_000); // 10ms
     }
 
     // Timer should have fired
@@ -138,13 +134,13 @@ test "Timer functionality" {
 }
 
 test "Event coalescing" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
     const config = zigzag.CoalescingConfig{
-        .enable_resize_coalescing = true,
-        .resize_debounce_ms = 50,
+        .coalesce_resize = true,
+        .max_coalesce_time_ms = 50,
     };
 
     var loop = try zigzag.EventLoop.init(allocator, .{ .coalescing = config });
@@ -164,7 +160,9 @@ test "EventMask operations" {
 }
 
 test "Multiple file descriptors" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    if (comptime !test_utils.supportsPosixPipe()) return error.SkipZigTest;
+
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -172,17 +170,11 @@ test "Multiple file descriptors" {
     defer loop.deinit();
 
     // Create multiple pipes
-    var pipe1: [2]i32 = undefined;
-    const rc1 = std.os.linux.pipe(&pipe1);
-    if (rc1 != 0) return error.PipeCreationFailed;
-    defer std.posix.close(pipe1[0]);
-    defer std.posix.close(pipe1[1]);
+    const pipe1 = test_utils.createPipe() catch return error.SkipZigTest;
+    defer test_utils.closePipe(pipe1);
 
-    var pipe2: [2]i32 = undefined;
-    const rc2 = std.os.linux.pipe(&pipe2);
-    if (rc2 != 0) return error.PipeCreationFailed;
-    defer std.posix.close(pipe2[0]);
-    defer std.posix.close(pipe2[1]);
+    const pipe2 = test_utils.createPipe() catch return error.SkipZigTest;
+    defer test_utils.closePipe(pipe2);
 
     // Add watches
     const watch1 = try loop.addFd(pipe1[0], .{ .read = true });
@@ -201,7 +193,7 @@ test "Multiple file descriptors" {
 }
 
 test "Recurring timer" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -227,14 +219,10 @@ test "Recurring timer" {
     }
 
     // Run for ~200ms, should fire multiple times
-    const ts_start_rec = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-    const start = @as(i64, @intCast(ts_start_rec.sec * 1000 + @divTrunc(ts_start_rec.nsec, 1_000_000)));
-    while ((blk: {
-        const ts_now_rec = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-        break :blk @as(i64, @intCast(ts_now_rec.sec * 1000 + @divTrunc(ts_now_rec.nsec, 1_000_000)));
-    }) - start < 200) {
+    const start = test_utils.getMonotonicMs();
+    while (test_utils.getMonotonicMs() - start < 200) {
         _ = try loop.tick();
-        std.time.sleep(10_000_000); // 10ms
+        test_utils.sleepNs(10_000_000); // 10ms
     }
 
     // Cancel timer
@@ -245,20 +233,17 @@ test "Recurring timer" {
 }
 
 test "Watch callback mechanism" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    if (comptime !test_utils.supportsPosixPipe()) return error.SkipZigTest;
+
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
     var loop = try zigzag.EventLoop.init(allocator, .{});
     defer loop.deinit();
 
-    var pipe: [2]i32 = undefined;
-    const rc = std.os.linux.pipe(&pipe);
-    if (rc != 0) return error.PipeCreationFailed;
-    defer std.posix.close(pipe[0]);
-    defer std.posix.close(pipe[1]);
-
-    var callback_fired = false;
+    const pipe = test_utils.createPipe() catch return error.SkipZigTest;
+    defer test_utils.closePipe(pipe);
 
     const testCallback = struct {
         fn callback(watch: *const zigzag.Watch, event: zigzag.Event) void {
@@ -280,7 +265,9 @@ test "Watch callback mechanism" {
 }
 
 test "Memory leak detection" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    if (comptime !test_utils.supportsPosixPipe()) return error.SkipZigTest;
+
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer {
         const leaked = gpa.deinit();
         std.testing.expect(leaked == .ok) catch @panic("Memory leak detected!");
@@ -292,9 +279,7 @@ test "Memory leak detection" {
         var loop = try zigzag.EventLoop.init(allocator, .{});
 
         // Add some watches and timers
-        var pipe: [2]i32 = undefined;
-        const pipe_rc = std.os.linux.pipe(&pipe);
-        if (pipe_rc != 0) return error.PipeCreationFailed;
+        const pipe = test_utils.createPipe() catch return error.SkipZigTest;
         const watch = try loop.addFd(pipe[0], .{ .read = true });
 
         const callback = struct {
@@ -304,14 +289,15 @@ test "Memory leak detection" {
 
         // Cleanup
         loop.removeFd(watch);
-        std.posix.close(pipe[0]);
-        std.posix.close(pipe[1]);
+        test_utils.closePipe(pipe);
         loop.deinit();
     }
 }
 
 test "Stress test - many file descriptors" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    if (comptime !test_utils.supportsPosixPipe()) return error.SkipZigTest;
+
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -319,14 +305,12 @@ test "Stress test - many file descriptors" {
     defer loop.deinit();
 
     const num_pipes = 10;
-    var pipes: [num_pipes][2]i32 = undefined;
-    var watches: [num_pipes]*const zigzag.Watch = undefined;
+    var pipes: [num_pipes][2]test_utils.Fd = undefined;
 
     // Create multiple pipes and watch them
     for (0..num_pipes) |i| {
-        const pipe_rc = std.os.linux.pipe(&pipes[i]);
-        if (pipe_rc != 0) return error.PipeCreationFailed;
-        watches[i] = try loop.addFd(pipes[i][0], .{ .read = true });
+        pipes[i] = test_utils.createPipe() catch return error.SkipZigTest;
+        _ = try loop.addFd(pipes[i][0], .{ .read = true });
     }
 
     // Verify all are tracked
@@ -334,7 +318,7 @@ test "Stress test - many file descriptors" {
 
     // Write to all pipes
     for (0..num_pipes) |i| {
-        _ = try std.posix.write(pipes[i][1], "x");
+        _ = try test_utils.writeToFd(pipes[i][1], "x");
     }
 
     // Poll should detect events
@@ -342,18 +326,19 @@ test "Stress test - many file descriptors" {
     const count = try loop.poll(&events, 100);
     try testing.expect(count > 0);
 
-    // Cleanup
+    // Cleanup - look up fresh watch pointers
     for (0..num_pipes) |i| {
-        loop.removeFd(watches[i]);
-        std.posix.close(pipes[i][0]);
-        std.posix.close(pipes[i][1]);
+        if (loop.watches.get(pipes[i][0])) |watch| {
+            loop.removeFd(watch);
+        }
+        test_utils.closePipe(pipes[i]);
     }
 
     try testing.expectEqual(@as(usize, 0), loop.watches.count());
 }
 
 test "Performance - event loop overhead" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
@@ -361,20 +346,17 @@ test "Performance - event loop overhead" {
     defer loop.deinit();
 
     const iterations = 1000;
-    const ts_start = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-    const start = @as(i64, @intCast(ts_start.sec * 1_000_000_000 + ts_start.nsec));
+    const start = test_utils.getMonotonicNs();
 
     for (0..iterations) |_| {
         _ = try loop.tick();
     }
 
-    const ts_end = std.posix.clock_gettime(std.posix.CLOCK.MONOTONIC) catch unreachable;
-    const end = @as(i64, @intCast(ts_end.sec * 1_000_000_000 + ts_end.nsec));
+    const end = test_utils.getMonotonicNs();
     const elapsed = end - start;
     const avg_ns = @divTrunc(elapsed, iterations);
 
     // Average tick should be under 10 microseconds
     try testing.expect(avg_ns < 10_000);
 
-    std.debug.print("Average tick time: {}ns\n", .{avg_ns});
 }

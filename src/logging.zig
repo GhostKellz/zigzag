@@ -1,204 +1,106 @@
 //! Centralized logging module for zigzag event loop
 //!
-//! Provides structured logging using zlog library with performance-focused
-//! configuration optimized for event loop operations.
+//! Provides structured logging using std.log with scoped loggers
+//! optimized for event loop operations.
 //!
 //! ## Features
-//! - Structured logging with typed fields
-//! - Performance metrics tracking
+//! - Scoped loggers for each subsystem
+//! - Performance metrics logging
 //! - Backend-specific logging
 //! - Event trace logging for debugging
-//! - Configurable log levels per subsystem
 
 const std = @import("std");
-const build_options = @import("build_options");
+const builtin = @import("builtin");
 
-/// Logger instance (conditionally compiled)
-pub const Logger = if (build_options.enable_zlog)
-    @import("zlog").Logger
-else
-    NoOpLogger;
-
-/// No-op logger for when zlog is disabled
-const NoOpLogger = struct {
-    pub fn init(_: std.mem.Allocator, _: anytype) !NoOpLogger {
-        return NoOpLogger{};
-    }
-
-    pub fn deinit(_: *NoOpLogger) void {}
-
-    pub fn debug(_: *NoOpLogger, comptime _: []const u8, _: anytype) void {}
-    pub fn info(_: *NoOpLogger, comptime _: []const u8, _: anytype) void {}
-    pub fn warn(_: *NoOpLogger, comptime _: []const u8, _: anytype) void {}
-    pub fn err(_: *NoOpLogger, comptime _: []const u8, _: anytype) void {}
-
-    pub fn logWithFields(_: *NoOpLogger, _: anytype, _: []const u8, _: anytype) void {}
-};
-
-/// Global logger instance (optional)
-var global_logger: ?Logger = null;
-var global_logger_mutex: std.Io.Mutex = .init;
-
-/// Get the debug Io context for synchronization
-fn getDebugIo() std.Io {
-    return std.Options.debug_io;
+fn isVerboseLoggingEnabled() bool {
+    return builtin.is_test or std.log.default_level == .debug;
 }
 
-/// Initialize the global logger
-pub fn initGlobalLogger(allocator: std.mem.Allocator) !void {
-    if (!build_options.enable_zlog) return;
-
-    const io = getDebugIo();
-    global_logger_mutex.lockUncancelable(io);
-    defer global_logger_mutex.unlock(io);
-
-    if (global_logger != null) return error.AlreadyInitialized;
-
-    const zlog = @import("zlog");
-    global_logger = try zlog.Logger.init(allocator, .{
-        .level = .debug,
-        .format = .text,
-        .output_target = .stderr,
-        .async_io = false, // Sync for now to avoid event loop conflicts
-    });
-}
-
-/// Deinitialize the global logger
-pub fn deinitGlobalLogger() void {
-    if (!build_options.enable_zlog) return;
-
-    const io = getDebugIo();
-    global_logger_mutex.lockUncancelable(io);
-    defer global_logger_mutex.unlock(io);
-
-    if (global_logger) |*logger| {
-        logger.deinit();
-        global_logger = null;
-    }
-}
-
-/// Get the global logger
-fn getGlobalLogger() ?*Logger {
-    const io = getDebugIo();
-    global_logger_mutex.lockUncancelable(io);
-    defer global_logger_mutex.unlock(io);
-
-    if (global_logger) |*logger| {
-        return logger;
-    }
-    return null;
-}
+/// Scoped loggers for different subsystems
+pub const backend = std.log.scoped(.zigzag_backend);
+pub const timer = std.log.scoped(.zigzag_timer);
+pub const events = std.log.scoped(.zigzag_events);
+pub const perf = std.log.scoped(.zigzag_perf);
+pub const file_watch = std.log.scoped(.zigzag_filewatch);
+pub const async_log = std.log.scoped(.zigzag_async);
+pub const general = std.log.scoped(.zigzag);
 
 /// Log backend initialization
 pub fn logBackendInit(backend_name: []const u8) void {
-    if (getGlobalLogger()) |logger| {
-        logger.info("Initializing backend: {s}", .{backend_name});
+    if (isVerboseLoggingEnabled()) {
+        backend.info("Initializing backend: {s}", .{backend_name});
     }
 }
 
 /// Log backend error
 pub fn logBackendError(backend_name: []const u8, err: anyerror) void {
-    if (getGlobalLogger()) |logger| {
-        logger.err("Backend {s} error: {}", .{ backend_name, err });
-    }
+    backend.err("Backend {s} error: {}", .{ backend_name, err });
 }
 
 /// Log event processing
 pub fn logEventProcessed(backend_name: []const u8, event_count: usize, duration_ns: u64) void {
-    if (!build_options.enable_zlog) return;
-
-    if (getGlobalLogger()) |logger| {
-        const zlog = @import("zlog");
-        const fields = [_]zlog.Field{
-            .{ .key = "backend", .value = .{ .string = backend_name } },
-            .{ .key = "events", .value = .{ .uint = event_count } },
-            .{ .key = "duration_ns", .value = .{ .uint = duration_ns } },
-        };
-        logger.logWithFields(.debug, "Events processed", &fields);
-    }
+    events.debug("Events processed: backend={s} count={d} duration_ns={d}", .{
+        backend_name,
+        event_count,
+        duration_ns,
+    });
 }
 
 /// Log timer creation
 pub fn logTimerCreated(timer_id: usize, interval_ms: u64, recurring: bool) void {
-    if (!build_options.enable_zlog) return;
-
-    if (getGlobalLogger()) |logger| {
-        const zlog = @import("zlog");
-        const fields = [_]zlog.Field{
-            .{ .key = "timer_id", .value = .{ .uint = timer_id } },
-            .{ .key = "interval_ms", .value = .{ .uint = interval_ms } },
-            .{ .key = "recurring", .value = .{ .boolean = recurring } },
-        };
-        logger.logWithFields(.debug, "Timer created", &fields);
-    }
+    timer.debug("Timer created: id={d} interval_ms={d} recurring={}", .{
+        timer_id,
+        interval_ms,
+        recurring,
+    });
 }
 
 /// Log file descriptor watch
-pub fn logFdWatchAdded(fd: i32, events: []const u8) void {
-    if (getGlobalLogger()) |logger| {
-        logger.debug("Watching FD {d} for events: {s}", .{ fd, events });
-    }
+pub fn logFdWatchAdded(fd: i32, event_types: []const u8) void {
+    events.debug("Watching FD {d} for events: {s}", .{ fd, event_types });
 }
 
 /// Log performance metrics
 pub fn logPerformanceMetrics(
-    backend: []const u8,
+    backend_name: []const u8,
     avg_latency_ns: u64,
     throughput_eps: u64,
     memory_mb: f64,
 ) void {
-    if (!build_options.enable_zlog) return;
-
-    if (getGlobalLogger()) |logger| {
-        const zlog = @import("zlog");
-        const fields = [_]zlog.Field{
-            .{ .key = "backend", .value = .{ .string = backend } },
-            .{ .key = "avg_latency_ns", .value = .{ .uint = avg_latency_ns } },
-            .{ .key = "throughput_eps", .value = .{ .uint = throughput_eps } },
-            .{ .key = "memory_mb", .value = .{ .float = memory_mb } },
-        };
-        logger.logWithFields(.info, "Performance metrics", &fields);
-    }
+    perf.info("Performance: backend={s} latency_ns={d} throughput={d}/s memory_mb={d:.2}", .{
+        backend_name,
+        avg_latency_ns,
+        throughput_eps,
+        memory_mb,
+    });
 }
 
 /// Log file watching event
 pub fn logFileWatchEvent(path: []const u8, event_type: []const u8) void {
-    if (getGlobalLogger()) |logger| {
-        logger.debug("File watch event: {s} - {s}", .{ path, event_type });
-    }
+    file_watch.debug("File watch event: {s} - {s}", .{ path, event_type });
 }
 
 /// Log async operation
 pub fn logAsyncOp(operation: []const u8, status: []const u8) void {
-    if (getGlobalLogger()) |logger| {
-        logger.debug("Async operation: {s} - {s}", .{ operation, status });
-    }
+    async_log.debug("Async operation: {s} - {s}", .{ operation, status });
 }
 
 /// Log error with context
 pub fn logError(context: []const u8, err: anyerror) void {
-    if (getGlobalLogger()) |logger| {
-        logger.err("{s}: {}", .{ context, err });
-    }
+    general.err("{s}: {}", .{ context, err });
 }
 
 /// Log warning with context
 pub fn logWarning(context: []const u8, message: []const u8) void {
-    if (getGlobalLogger()) |logger| {
-        logger.warn("{s}: {s}", .{ context, message });
-    }
+    general.warn("{s}: {s}", .{ context, message });
 }
 
 /// Log debug message
 pub fn logDebug(message: []const u8) void {
-    if (getGlobalLogger()) |logger| {
-        logger.debug("{s}", .{message});
-    }
+    general.debug("{s}", .{message});
 }
 
 /// Log info message
 pub fn logInfo(message: []const u8) void {
-    if (getGlobalLogger()) |logger| {
-        logger.info("{s}", .{message});
-    }
+    general.info("{s}", .{message});
 }

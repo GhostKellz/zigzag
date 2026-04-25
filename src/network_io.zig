@@ -499,7 +499,7 @@ pub const NetworkManager = struct {
 };
 
 test "NetworkConnection lifecycle" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
 
     const address = try net.Address.parseIp("127.0.0.1", 8080);
@@ -517,7 +517,7 @@ test "NetworkConnection lifecycle" {
 }
 
 test "BandwidthMonitor" {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    var gpa = std.heap.DebugAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 

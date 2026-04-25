@@ -4,6 +4,8 @@
 const std = @import("std");
 const builtin = @import("builtin");
 
+extern "kernel32" fn Sleep(dwMilliseconds: u32) callconv(.winapi) void;
+
 /// Sleep for the specified number of nanoseconds
 pub fn sleep(ns: u64) void {
     if (builtin.os.tag == .linux) {
@@ -17,6 +19,10 @@ pub fn sleep(ns: u64) void {
             // Interrupted by signal, continue with remaining time
             req = rem;
         }
+    } else if (builtin.os.tag == .windows) {
+        // Windows Sleep takes milliseconds
+        const ms: u32 = @intCast(@min(ns / std.time.ns_per_ms, std.math.maxInt(u32)));
+        Sleep(ms);
     } else {
         // Use libc for other POSIX platforms
         const sec: std.c.time_t = @intCast(ns / std.time.ns_per_s);
@@ -30,7 +36,7 @@ pub fn sleep(ns: u64) void {
 }
 
 /// Returns the current monotonic timestamp as a timespec
-/// Works across Linux, macOS, and BSD platforms
+/// Works across Linux, macOS, BSD, and Windows platforms
 pub fn getMonotonicTime() Timespec {
     if (builtin.os.tag == .linux) {
         var ts: std.os.linux.timespec = undefined;
@@ -38,6 +44,24 @@ pub fn getMonotonicTime() Timespec {
         return .{
             .sec = ts.sec,
             .nsec = ts.nsec,
+        };
+    } else if (builtin.os.tag == .windows) {
+        // Use RtlQueryPerformanceCounter from ntdll on Windows
+        const windows = std.os.windows;
+        var freq: windows.LARGE_INTEGER = undefined;
+        var counter: windows.LARGE_INTEGER = undefined;
+        _ = windows.ntdll.RtlQueryPerformanceFrequency(&freq);
+        _ = windows.ntdll.RtlQueryPerformanceCounter(&counter);
+
+        // Convert to seconds and nanoseconds
+        const freq_val: i64 = @bitCast(freq);
+        const counter_val: i64 = @bitCast(counter);
+        const sec = @divTrunc(counter_val, freq_val);
+        const remainder = @mod(counter_val, freq_val);
+        const nsec = @divTrunc(remainder * std.time.ns_per_s, freq_val);
+        return .{
+            .sec = @intCast(sec),
+            .nsec = @intCast(nsec),
         };
     } else {
         // Use libc for other POSIX platforms (macOS, BSD, etc.)
