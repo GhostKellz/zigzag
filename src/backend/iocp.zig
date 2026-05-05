@@ -1008,7 +1008,7 @@ fn createSocketPair(backend: *IOCPBackend) !struct { server: SOCKET, client: SOC
         .sin_family = AF_INET,
         .sin_port = 0, // Let OS choose port
         .sin_addr = 0x0100007F, // 127.0.0.1 in network byte order
-        .sin_zero = [_]u8{0} ** 8,
+        .sin_zero = @splat(0),
     };
 
     if (bind(listener, @ptrCast(&addr), @sizeOf(sockaddr_in)) != 0) {

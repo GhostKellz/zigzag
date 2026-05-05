@@ -474,7 +474,8 @@ test "Async runtime basic operations" {
 }
 
 test "Async operation lifecycle" {
-    var operation = AsyncOperation.init(.read, 1, &[_]u8{0} ** 1024);
+    const buf1: [1024]u8 = @splat(0);
+    var operation = AsyncOperation.init(.read, 1, &buf1);
     try std.testing.expect(operation.operation_type == .read);
     try std.testing.expect(operation.fd == 1);
 
@@ -489,7 +490,8 @@ test "Async operation lifecycle" {
     }
 
     // Test cancellation
-    var cancelled_op = AsyncOperation.init(.write, 2, &[_]u8{0} ** 512);
+    const buf2: [512]u8 = @splat(0);
+    var cancelled_op = AsyncOperation.init(.write, 2, &buf2);
     cancelled_op.cancel();
     try std.testing.expect(cancelled_op.result == .cancelled);
 }

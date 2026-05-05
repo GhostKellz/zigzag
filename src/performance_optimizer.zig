@@ -234,7 +234,7 @@ pub const MemoryOptimizer = struct {
 
         pub fn init() AllocationTracker {
             return AllocationTracker{
-                .size_histogram = [_]u64{0} ** 64,
+                .size_histogram = @splat(0),
                 .peak_usage = 0,
                 .current_usage = 0,
                 .allocation_count = 0,

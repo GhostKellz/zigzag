@@ -222,7 +222,7 @@ pub const EventStats = struct {
     pub fn init() EventStats {
         return EventStats{
             .total_processed = 0,
-            .by_priority = [_]u64{0} ** 4,
+            .by_priority = @splat(0),
             .avg_queue_size = 0.0,
             .max_queue_size = 0,
             .measurements = 0,

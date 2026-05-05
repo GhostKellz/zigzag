@@ -264,7 +264,7 @@ pub const TraceAnalysis = struct {
     total_processing_time_ns: u64 = 0,
     max_processing_time_ns: u64 = 0,
     min_processing_time_ns: u64 = std.math.maxInt(u64),
-    events_by_type: [8]u64 = [_]u64{0} ** 8,
+    events_by_type: [8]u64 = @splat(0),
     total_queue_depth: u64 = 0,
     max_queue_depth: usize = 0,
 

@@ -53,7 +53,7 @@ pub const Timer = struct {
 pub const Metrics = struct {
     // Event processing metrics
     events_processed: u64 = 0,
-    events_by_type: [8]u64 = [_]u64{0} ** 8, // Index by EventType
+    events_by_type: [8]u64 = @splat(0), // Index by EventType
     total_processing_time_ns: u64 = 0,
     max_processing_time_ns: u64 = 0,
     min_processing_time_ns: u64 = std.math.maxInt(u64),

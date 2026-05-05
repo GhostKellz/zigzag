@@ -296,7 +296,7 @@ pub const MemoryLeakDetector = struct {
 
     pub fn getLeakStats(self: MemoryLeakDetector) LeakStats {
         var total_leaked: u64 = 0;
-        var count_by_severity = [_]u32{0} ** 4;
+        var count_by_severity: [4]u32 = @splat(0);
 
         for (self.leak_reports.items) |report| {
             total_leaked += report.allocation_info.size;
