@@ -2,6 +2,15 @@
 
 All notable changes to ZigZag are documented here.
 
+## [0.1.8] - 2026-06-13
+
+### Changed
+- Updated zsync dependency to v0.8.3
+- Raised `minimum_zig_version` to 0.17.0-dev.813+2153f8143
+
+### Fixed
+- Updated build script for the latest Zig build API: replaced removed `b.args` / `run_cmd.addArgs()` passthrough with `run_cmd.addPassthruArgs()`
+
 ## [0.1.6] - 2025-04-23
 
 ### Added
